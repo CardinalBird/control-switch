@@ -19,6 +19,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.controlswitch.domain.model.AppTheme
 import com.controlswitch.ui.MirrorScreen
@@ -62,7 +65,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // A console's screen, not a phone's: the clock and notification icons along the top go. A
+        // swipe down from the top edge still shows them for a moment.
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         requestNotificationPermissionIfNeeded()
+
         setContent {
             val vm: MirrorViewModel = viewModel(factory = MirrorViewModel.factory(applicationContext))
             val theme = vm.state.collectAsState().value.theme

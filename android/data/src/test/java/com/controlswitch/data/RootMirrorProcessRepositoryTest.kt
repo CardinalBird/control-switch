@@ -390,9 +390,6 @@ private class FakeSettingsRepository(
         state = state.copy(comboHoldKillApp = enabled)
     }
 
-    override fun setVirtualMouseEnabled(enabled: Boolean) {
-        state = state.copy(virtualMouse = enabled)
-    }
 
     override fun setRumbleStrength(percent: Int) = Unit
 

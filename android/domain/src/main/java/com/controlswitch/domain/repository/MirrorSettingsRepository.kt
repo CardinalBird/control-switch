@@ -11,7 +11,7 @@ interface MirrorSettingsRepository {
     fun setExpectedRunning(expectedRunning: Boolean)
     fun setHomeMode(mode: HomeButtonMode)
     fun setComboHoldKillAppEnabled(enabled: Boolean)
-    fun setVirtualMouseEnabled(enabled: Boolean)
+
     fun setRumbleStrength(percent: Int)
     fun setAutoMirrorEnabled(enabled: Boolean)
     fun setMirrorWhenHandheld(enabled: Boolean)

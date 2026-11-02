@@ -220,6 +220,7 @@ fun MappingEditorScreen(
                             controller?.let { HintAction(SlotIcon.Y, "Map all", it::mapAll) },
                             HintAction(SlotIcon.B, "Done", onClose),
                         ),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

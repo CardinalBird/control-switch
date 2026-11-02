@@ -83,12 +83,7 @@ internal fun AdditionalSettingsScreen(
                 onClick = { viewModel.toggleComboHoldKillApp(!state.comboHoldKillApp) },
                 modifier = Modifier.focusRequester(first).then(explains("Hold both for 3 seconds to close the game you're in.")),
             ) { RowSwitch(state.comboHoldKillApp, !state.busy) }
-            MenuRow(
-                title = "Virtual mouse",
-                minHeight = 40.dp,
-                onClick = { viewModel.toggleVirtualMouse(!state.virtualMouse) },
-                modifier = explains("Select + R3 toggles · A click · B right-click · R1 shade"),
-            ) { RowSwitch(state.virtualMouse, !state.busy) }
+
             val always = state.mirrorWhenHandheld
             val flip = { viewModel.setMirrorWhenHandheld(!always) }
             MenuRow(

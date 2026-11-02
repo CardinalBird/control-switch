@@ -16,6 +16,7 @@ import com.controlswitch.domain.model.ControllerMapping
 import com.controlswitch.domain.model.MirrorSettings
 import com.controlswitch.domain.model.MirrorStartRequest
 import com.controlswitch.domain.model.MirrorStatus
+import com.controlswitch.domain.model.PadBattery
 import com.controlswitch.domain.usecase.AutoMirrorDecision
 
 class InputMirrorSupervisorService : Service() {
@@ -26,6 +27,8 @@ class InputMirrorSupervisorService : Service() {
     private lateinit var motion: ThorMotionServer
     private lateinit var notificationManager: NotificationManager
     private var supervisorState = SupervisorState.WaitingForDock
+    // Pads warned about running low, by name, until they charge or leave (see newlyLow).
+    private val lowWarned = mutableSetOf<String>()
     private val displayWake = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = MirrorStateStore.wake()
         override fun onDisplayRemoved(displayId: Int) = MirrorStateStore.wake()
@@ -122,6 +125,7 @@ class InputMirrorSupervisorService : Service() {
 
         var nextRestartAllowedAt = 0L
         var nextStartRetryAllowedAt = 0L
+        var nextBatteryCheckAt = 0L
         var sleepMs = SUPERVISOR_INTERVAL_MS
 
         while (running) {
@@ -156,6 +160,15 @@ class InputMirrorSupervisorService : Service() {
                     runCatching { graph.processRepository.healOrphanedHideNodes() }
                 }
                 publishSnapshot(settings, dockActive, allDevices, mirrorRunning)
+
+                // A pad about to die mid-game gets one heads-up per low spell. Only while mirroring:
+                // the screen shows the charge itself whenever it is open. A root shell read, so
+                // sparingly, and never allowed to fail the tick.
+                if (mirrorRunning && now >= nextBatteryCheckAt) {
+                    nextBatteryCheckAt = now + BATTERY_CHECK_MS
+                    val levels = runCatching { graph.readPadBatteries() }.getOrDefault(emptyMap())
+                    for (name in newlyLow(levels, lowWarned)) notifyLowBattery(name)
+                }
 
                 if (!settings.autoMirrorEnabled) {
                     if (mirrorRunning || settings.expectedRunning) {
@@ -351,6 +364,20 @@ class InputMirrorSupervisorService : Service() {
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
+        // Its own channel, high so it pops over a game; muting it leaves the status one alone.
+        notificationManager.createNotificationChannel(
+            NotificationChannel(BATTERY_CHANNEL_ID, "Controller battery", NotificationManager.IMPORTANCE_HIGH),
+        )
+    }
+
+    private fun notifyLowBattery(padName: String) {
+        val notification = Notification.Builder(this, BATTERY_CHANNEL_ID)
+            .setContentTitle("Controller battery low")
+            .setContentText("$padName is almost out of charge.")
+            .setSmallIcon(R.drawable.ic_stat_mirror)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(BATTERY_NOTIFICATION_ID, notification)
     }
 
     private fun buildNotification(state: SupervisorState): Notification {
@@ -391,6 +418,11 @@ class InputMirrorSupervisorService : Service() {
         private const val PROBE_RETRY_MS = 10_000L
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_CHANNEL_ID = "input_mirror_supervisor"
+        // Clear of the status notification (1001) and the UI's "controls switched" (1002).
+        private const val BATTERY_NOTIFICATION_ID = 1003
+        private const val BATTERY_CHANNEL_ID = "controller_battery"
+        private const val BATTERY_CHECK_MS = 60_000L
+
         private const val SUPERVISOR_INTERVAL_MS = 2500L
         private const val SUPERVISOR_IDLE_INTERVAL_MS = 8000L
         private const val SUPERVISOR_WAITING_FOR_DEVICE_INTERVAL_MS = 6000L
@@ -398,4 +430,17 @@ class InputMirrorSupervisorService : Service() {
         private const val RESTART_THROTTLE_MS = 10000L
         private const val START_RETRY_BACKOFF_MS = 60000L
     }
+}
+
+/**
+ * The pads to warn about now: one bar or less and not charging, minus those already warned.
+ * [warned] is kept in step: a pad that charged up or left is forgotten, so running low again is a
+ * new warning. Switch-protocol pads report four bars; one is where the console itself warns.
+ */
+internal fun newlyLow(levels: Map<String, PadBattery>, warned: MutableSet<String>): Set<String> {
+    val low = levels.filterValues { it.level <= 1 && !it.charging }.keys
+    warned.retainAll(low)
+    val fresh = low - warned
+    warned.addAll(fresh)
+    return fresh
 }

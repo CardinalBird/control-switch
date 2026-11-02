@@ -182,11 +182,9 @@ class MirrorUseCaseTest {
 
         SetHomeModeUseCase(settings)(HomeButtonMode.BACK)
         SetComboHoldKillAppEnabledUseCase(settings)(true)
-        SetVirtualMouseEnabledUseCase(settings)(true)
 
         assertEquals(HomeButtonMode.BACK, settings.state.homeMode)
         assertTrue(settings.state.comboHoldKillApp)
-        assertTrue(settings.state.virtualMouse)
         assertTrue(settings.state.expectedRunning)
         assertEquals("/dev/input/event9", settings.state.source)
         assertEquals("/dev/input/event2", settings.state.target)
@@ -629,9 +627,6 @@ private class FakeMirrorSettingsRepository(
         state = state.copy(comboHoldKillApp = enabled)
     }
 
-    override fun setVirtualMouseEnabled(enabled: Boolean) {
-        state = state.copy(virtualMouse = enabled)
-    }
 
     override fun setRumbleStrength(percent: Int) = Unit
 

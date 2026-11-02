@@ -477,7 +477,7 @@ class MappingEditorControllerTest {
         override fun setPlayer1(name: String?, path: String?) = Unit
         override fun setHomeMode(mode: HomeButtonMode) = Unit
         override fun setComboHoldKillAppEnabled(enabled: Boolean) = Unit
-        override fun setVirtualMouseEnabled(enabled: Boolean) = Unit
+
         override fun setRumbleStrength(percent: Int) = Unit
         override fun setAutoMirrorEnabled(enabled: Boolean) = Unit
         override fun setTheme(theme: com.controlswitch.domain.model.AppTheme) = Unit

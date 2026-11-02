@@ -18,7 +18,6 @@ class AndroidMirrorSettingsRepository(context: Context) : MirrorSettingsReposito
             targetGuid = prefs.getString(KEY_TARGET_GUID, null),
             homeMode = readHomeMode(),
             comboHoldKillApp = prefs.getBoolean(KEY_COMBO_HOLD_KILL_APP, false),
-            virtualMouse = prefs.getBoolean(KEY_VIRTUAL_MOUSE, false),
             rumbleStrength = prefs.getInt(KEY_RUMBLE_STRENGTH, 80),
             autoMirrorEnabled = prefs.getBoolean(KEY_AUTO_MIRROR_ENABLED, true),
             mirrorWhenHandheld = prefs.getBoolean(KEY_MIRROR_WHEN_HANDHELD, false),
@@ -66,7 +65,6 @@ class AndroidMirrorSettingsRepository(context: Context) : MirrorSettingsReposito
 
     override fun setComboHoldKillAppEnabled(enabled: Boolean) = setLiveOption(KEY_COMBO_HOLD_KILL_APP, enabled)
 
-    override fun setVirtualMouseEnabled(enabled: Boolean) = setLiveOption(KEY_VIRTUAL_MOUSE, enabled)
 
     override fun setRumbleStrength(percent: Int) = synchronized(generationLock) {
         prefs.edit()

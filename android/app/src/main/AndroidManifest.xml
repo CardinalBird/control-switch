@@ -11,6 +11,10 @@
          would hide the status entirely. Declared (and requested at launch) so the app does not
          depend on one vendor's leniency. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Controller Tests buzzes the handheld on each press while mirroring, which the daemon
+         replays as rumble on the pad: the rumble path, tested by hand. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
 
     <application
         android:name=".MainApplication"

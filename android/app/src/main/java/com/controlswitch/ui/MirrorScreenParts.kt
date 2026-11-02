@@ -125,7 +125,8 @@ internal fun PadBatteryIndicator(device: ControllerDevice?, levels: Map<String, 
     val level = device?.let { levels[it.name] }
     when {
         percent != null && percent > 0 -> Battery(percent)
-        level != null -> BatteryIcon(level.level / 4f, level.level <= 1, null, level.charging)
+        level != null -> BatteryIcon(level.level / 4f, level.level <= 1, "Low".takeIf { level.level <= 1 && !level.charging }, level.charging)
+
     }
 }
 

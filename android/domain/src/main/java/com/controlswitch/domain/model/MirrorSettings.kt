@@ -10,7 +10,11 @@ data class MirrorSettings(
     val targetGuid: String? = null,
     val homeMode: HomeButtonMode = HomeButtonMode.HOME,
     val comboHoldKillApp: Boolean = false,
+    // Always false since 0.7: the Select + R3 pointer never worked reliably and its switch is gone
+    // from Additional Settings. ponytail: the daemon still carries mouse.c and the --virtual-mouse
+    // flag this feeds; delete both together with an on-device e2e run.
     val virtualMouse: Boolean = false,
+
     // How hard the pad rumbles when a game vibrates the Thor, 0 (off) to 100 percent.
     val rumbleStrength: Int = 80,
     val autoMirrorEnabled: Boolean = true,

@@ -56,7 +56,6 @@ data class MirrorUiState(
     // The service is published but never answers (Odin 2 Mini). Distinct from absent, because
     // telling that owner their device "doesn't have it" would be flatly wrong.
     val serviceUnresponsive: Boolean = false,
-    val virtualMouse: Boolean = false,
     // Percent, 0 = off: how hard the pad rumbles when a game vibrates the Thor.
     val rumbleStrength: Int = 80,
     // The pad locked in as player 1 with L + R, or null for "first connected".
@@ -79,7 +78,20 @@ data class MirrorUiState(
     // controller and the user can re-pick it manually.
     val hasKnownInternalProfile: Boolean
         get() = devices.any { it.isKnownInternal }
+
+    /**
+     * The supervisor is about to start the mirror, or is starting it: everything it needs is here
+     * and the daemon is not up yet. Until it is, the pad's presses reach the app as themselves, and
+     * its B is Back, which on the main page closes the app. The screen blocks input while this holds.
+     */
+    val starting: Boolean
+        get() = autoMirrorEnabled && !enabled && !loading && (docked || mirrorWhenHandheld) &&
+            devices.any { it.isInternal } &&
+            devices.filter { !it.isInternal }.let { externals ->
+                if (player1Name == null) externals.isNotEmpty() else externals.lockedPlayer1(player1Name, player1Path) != null
+            }
 }
+
 
 class MirrorViewModel(private val appContext: Context) : ViewModel() {
     /**
@@ -217,7 +229,6 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
                 // just made, which briefly flipped the switch back.
                 homeMode = saved.homeMode,
                 comboHoldKillApp = saved.comboHoldKillApp,
-                virtualMouse = saved.virtualMouse,
                 rumbleStrength = saved.rumbleStrength,
                 mirrorWhenHandheld = saved.mirrorWhenHandheld,
                 autoMirrorEnabled = status.autoMirrorEnabled,
@@ -396,19 +407,6 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
         }
     }
 
-    fun toggleVirtualMouse(nextValue: Boolean) {
-        val current = _state.value
-        if (current.busy) return
-        _state.update { it.copy(virtualMouse = nextValue) }
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) { graph.setVirtualMouseEnabled(nextValue) }
-                MirrorStateStore.wake()
-            } catch (error: Exception) {
-                _state.update { it.copy(virtualMouse = !nextValue, message = error.message ?: error.toString()) }
-            }
-        }
-    }
 
     fun setRumbleStrength(percent: Int) {
         val next = percent.coerceIn(0, 100)

@@ -95,7 +95,7 @@ It runs without root, using a privileged service the stock firmware already ship
   slots, and untouched controls keep working. Pads the bundled
   [SDL database](third-party/gamecontrollerdb/NOTICE.md) knows arrive already mapped, using the
   entry that fits the pad's driver
-- **Virtual mouse** — Select + R3 turns the pad into a pointer for tapping through Android UI
+
 - **Nintendo layout aware** — swaps A/B and X/Y when the built-in pad is in its Nintendo profile
 - **Controller-first UI** — Switch-style screens with a button-hint bar; set it up without touching
   the screen

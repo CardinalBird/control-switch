@@ -1,5 +1,9 @@
 package com.controlswitch.ui
 
+import android.os.Build
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -79,8 +83,14 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     var padId by remember { mutableIntStateOf(-1) }
     val pad = pads.firstOrNull { it.id == padId } ?: pads.firstOrNull()
     var testingRaw by remember { mutableStateOf(false) }
-    // A pad that drops out mid-test ends the test rather than lighting a ghost.
-    val testing = testingRaw && pad != null && pad.id == padId
+    // The mirrored run: the mirror is let run and the test reads what comes through it, which is what
+    // a game sees, from the handheld's own device. Each press buzzes the handheld, which the daemon
+    // replays as rumble on the pad, so rumble and the round trip get checked by feel at the same time.
+    var mirrored by remember { mutableStateOf(false) }
+
+    // A pad that drops out mid-test ends the test rather than lighting a ghost. A mirrored run waits
+    // for the mirror: before it is up, the pad's presses arrive raw, which is not what is being tested.
+    val testing = testingRaw && pad != null && pad.id == padId && (!mirrored || state.enabled)
     var test by remember { mutableStateOf(PadTest(emptyList())) }
     // The motion step: the pad's gyro over the app's DSU port. For an external pad that is the
     // daemon's, so the mirror is let run for the step; the handheld's own is served while it's off.
@@ -91,7 +101,7 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     var motionLabel by remember { mutableStateOf("") }
     var motionTest by remember { mutableStateOf(MotionTest()) }
     val builtIn = pad != null && pad.name.equals(internalName, ignoreCase = true)
-    val holdWanted = !(motion && !motionBuiltIn)
+    val holdWanted = !(motion && !motionBuiltIn) && !mirrored
     LifecycleStartEffect(holdWanted) {
         MirrorStateStore.setTestingPad(holdWanted)
         onStopOrDispose { MirrorStateStore.setTestingPad(false) }
@@ -119,7 +129,10 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
 
     BackHandler(enabled = active) {
         when {
-            testing -> testingRaw = false
+            testing || mirrored -> {
+                testingRaw = false
+                mirrored = false
+            }
             motion -> motion = false
             else -> onBack()
         }
@@ -133,6 +146,19 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
             items = padItems(hasKey = { chosen.hasKeys(it)[0] }, hasAxis = { chosen.getMotionRange(it) != null }, axes = axes, builtIn = builtIn),
         )
         padId = chosen.id
+        testingRaw = true
+    }
+
+    fun startMirrored() {
+        // Nothing to mirror alone: the handheld's own pad is the target, another pad is the source.
+        if (!ready || pads.size < 2) return
+        val internal = pads.firstOrNull { it.name.equals(internalName, ignoreCase = true) } ?: return
+        val axes = padAxes { internal.getMotionRange(it) != null }
+        test = PadTest(
+            items = padItems(hasKey = { internal.hasKeys(it)[0] }, hasAxis = { internal.getMotionRange(it) != null }, axes = axes, builtIn = true),
+        )
+        padId = internal.id
+        mirrored = true
         testingRaw = true
     }
 
@@ -152,20 +178,24 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     fun InputDevice?.isPad() = this != null && !isVirtual &&
         (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD || sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
     val activity = LocalContext.current.findMainActivity()
-    // Y on the picker starts the motion step. Taken at the activity rather than through Compose
-    // focus, which is still being re-anchored right after a step ends; an unhandled Y turns into
-    // Back and would close the page. Both halves are taken.
-    DisposableEffect(activity, testing, motion, ready, pad?.id) {
-        if (activity == null || testing || motion) return@DisposableEffect onDispose { }
+    // Y on the picker starts the motion step, X the mirrored run. Taken at the activity rather than
+    // through Compose focus, which is still being re-anchored right after a step ends; an unhandled
+    // Y turns into Back and would close the page. Both halves are taken.
+    DisposableEffect(activity, testing, motion, mirrored, ready, pad?.id) {
+        if (activity == null || testing || motion || mirrored) return@DisposableEffect onDispose { }
         activity.onPadCapture = { event: KeyEvent ->
-            (event.keyCode == KeyEvent.KEYCODE_BUTTON_Y).also { mine ->
-                if (mine && event.action == KeyEvent.ACTION_UP && event.repeatCount == 0) startMotion()
+            val x = event.keyCode == KeyEvent.KEYCODE_BUTTON_X
+            (x || event.keyCode == KeyEvent.KEYCODE_BUTTON_Y).also { mine ->
+                if (mine && event.action == KeyEvent.ACTION_UP && event.repeatCount == 0) {
+                    if (x) startMirrored() else startMotion()
+                }
             }
         }
         onDispose { activity.onPadCapture = null }
     }
-    DisposableEffect(activity, testing, pad?.id) {
+    DisposableEffect(activity, testing, mirrored, pad?.id) {
         if (activity == null || !testing || pad == null) return@DisposableEffect onDispose { }
+        val vibrator = if (mirrored) activity.getSystemService(Vibrator::class.java) else null
         val axes = padAxes { pad.getMotionRange(it) != null }
         val hasHat = pad.getMotionRange(MotionEvent.AXIS_HAT_X) != null
         // 0 at rest, 1 fully pulled, whatever the axis range: a trigger that reports -1..1 rests at -1.
@@ -176,7 +206,11 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
         activity.onPadCapture = { event: KeyEvent ->
             val icon = PAD_KEYS[event.keyCode]
             (icon != null && event.device.isPad()).also { mine ->
-                if (mine && event.repeatCount == 0) test = test.button(icon!!, event.action == KeyEvent.ACTION_DOWN)
+                if (mine && event.repeatCount == 0) {
+                    val down = event.action == KeyEvent.ACTION_DOWN
+                    test = test.button(icon!!, down)
+                    if (down) vibrator?.buzz()
+                }
             }
         }
         activity.onPadMotion = { event: MotionEvent ->
@@ -209,14 +243,15 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
         // The releases land after the hooks are gone, so nothing would ever come back up.
         test = test.copy(down = emptySet())
         testingRaw = false
+        mirrored = false
     }
 
     // Same anchoring as Additional Settings, redone when the test ends and the row is back in charge.
     var hasFocus by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
     val inputModeManager = LocalInputModeManager.current
-    LaunchedEffect(active, testing, motion) {
-        if (!active || testing || motion) return@LaunchedEffect
+    LaunchedEffect(active, testing, motion, mirrored) {
+        if (!active || testing || motion || mirrored) return@LaunchedEffect
         repeat(24) {
             if (hasFocus) return@LaunchedEffect
             inputModeManager.requestInputMode(InputMode.Keyboard)
@@ -240,14 +275,15 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
                         title = "Controller",
                         minHeight = 44.dp,
                         // Mirroring may run during the motion step, so a pad's A would reach this row.
-                        onClick = if (motion) null else ({ start() }),
-                        onLeft = if (testing || motion) null else ({ cycle(-1) }),
-                        onRight = if (testing || motion) null else ({ cycle(1) }),
+                        onClick = if (motion || mirrored) null else ({ start() }),
+                        onLeft = if (testing || motion || mirrored) null else ({ cycle(-1) }),
+                        onRight = if (testing || motion || mirrored) null else ({ cycle(1) }),
                         modifier = Modifier.focusRequester(first),
                     ) {
                         RowValue(
                             when {
                                 pad == null -> "No controller connected"
+                                mirrored -> "Through the mirror"
                                 !ready && !motion -> "Pausing mirroring…"
                                 motion -> motionLabel
                                 testing -> padLabel(pad, pads, internalName)
@@ -279,10 +315,20 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
                     },
                     hints = listOf(HintAction(SlotIcon.B, "Done") { motion = false }),
                 )
+            } else if (mirrored && !testing) {
+                Footer(
+                    status = when {
+                        !state.autoMirrorEnabled -> "Mirroring is off: turn it on from the main screen first."
+                        !state.docked && !state.mirrorWhenHandheld -> "This needs mirroring: dock, or set Allow mirroring to Always."
+                        else -> "Starting mirroring…"
+                    },
+                    hints = listOf(HintAction(SlotIcon.B, "Cancel") { mirrored = false; testingRaw = false }),
+                )
             } else if (testing) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Press every button, pull both triggers and turn each stick in a full circle.",
+                        if (mirrored) "What games see through the mirror. Every press rumbles your controller."
+                        else "Press every button, pull both triggers and turn each stick in a full circle.",
                         color = Palette.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(start = 28.dp).weight(1f),
                     )
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { HoldHint(hold.value) }
@@ -294,10 +340,12 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
                         // With another pad connected the handheld's presses come through that pad, so
                         // the two can't be told apart.
                         builtIn && pads.size > 1 -> "Turn off other controllers to test this handheld alone."
+                        pads.size > 1 -> "A tests the buttons, Y the motion. X tests through the mirror, as games see it."
                         else -> "Choose a controller: A tests the buttons, Y the motion."
                     },
-                    hints = listOf(
+                    hints = listOfNotNull(
                         HintAction(SlotIcon.B, "Back", onBack),
+                        if (pads.size > 1) HintAction(SlotIcon.X, "Mirrored") { startMirrored() } else null,
                         HintAction(SlotIcon.Y, "Motion") { startMotion() },
                         HintAction(SlotIcon.A, "Buttons", null),
                     ),
@@ -308,6 +356,25 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
 }
 
 private const val HOLD_MS = 1500
+/** The buzz per press on a mirrored run: short enough that fast presses stay distinct. */
+private const val BUZZ_MS = 60L
+
+/**
+ * One buzz, filed as media like a game's rumble is. Left unlabelled, Android files a short buzz as
+ * touch feedback and drops it when the user has that off, and the test would say the pad's rumble
+ * is broken when only the setting is.
+ */
+private fun Vibrator.buzz() {
+    val effect = VibrationEffect.createOneShot(BUZZ_MS, VibrationEffect.DEFAULT_AMPLITUDE)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_MEDIA))
+    } else {
+        @Suppress("DEPRECATION")
+        vibrate(effect)
+    }
+}
+
+
 
 /** The real game controllers Android lists right now, the handheld's own first. */
 private fun connectedPads(internalName: String?): List<InputDevice> =

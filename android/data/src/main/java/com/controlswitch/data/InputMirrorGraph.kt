@@ -14,7 +14,7 @@ import com.controlswitch.domain.usecase.SetAutoMirrorEnabledUseCase
 import com.controlswitch.domain.usecase.SetComboHoldKillAppEnabledUseCase
 import com.controlswitch.domain.usecase.SetHomeModeUseCase
 import com.controlswitch.domain.usecase.SetManualInternalControllerUseCase
-import com.controlswitch.domain.usecase.SetVirtualMouseEnabledUseCase
+
 import com.controlswitch.domain.usecase.StartMirrorUseCase
 import com.controlswitch.domain.usecase.StopMirrorUseCase
 
@@ -72,7 +72,7 @@ class InputMirrorGraph private constructor(context: Context, forceDockMode: Bool
     val getMirrorStatus = GetMirrorStatusUseCase(processRepository, settingsRepository, dockStateRepository)
     val setHomeMode = SetHomeModeUseCase(settingsRepository)
     val setComboHoldKillAppEnabled = SetComboHoldKillAppEnabledUseCase(settingsRepository)
-    val setVirtualMouseEnabled = SetVirtualMouseEnabledUseCase(settingsRepository)
+
     val setAutoMirrorEnabled = SetAutoMirrorEnabledUseCase(settingsRepository)
     val setManualInternalController = SetManualInternalControllerUseCase(settingsRepository)
     val resolveAutoMirrorDecision = ResolveAutoMirrorDecisionUseCase()

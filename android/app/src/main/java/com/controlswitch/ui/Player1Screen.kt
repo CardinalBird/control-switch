@@ -172,7 +172,9 @@ fun Player1Screen(
                 HintAction(SlotIcon.B, "Back", onClose),
                 if (pendingName != null) HintAction(SlotIcon.A, "OK", onConfirm) else null,
             ),
+            modifier = Modifier.fillMaxWidth(),
         )
+
     }
 }
 
@@ -246,9 +248,10 @@ internal data class HintAction(val icon: SlotIcon, val label: String, val onClic
 
 /** The Switch-style hints along the bottom, on the page: which pad button does what. Tappable too. */
 @Composable
-internal fun HintBar(hints: List<HintAction>) {
+internal fun HintBar(hints: List<HintAction>, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 10.dp),
+        modifier = modifier.padding(horizontal = 28.dp, vertical = 10.dp),
+
         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
