@@ -1,47 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The AYN Thor, opened, front on: lid with its screen, the hinge, and the deck with its small
-     centre screen, a stick over the D-pad on the left, the face buttons over a stick on the right.
-     One colour, white on purpose: callers tint it with the theme's secondary text colour, and the
-     screens are the same ink at half strength. -->
+<!-- AYN Thor, minimalist: two stacked screens, hinge, sticks, D-pad, face buttons.
+     One colour (white) so the app can tint it for each theme. 96 x 96 viewport. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="120dp"
-    android:height="100dp"
-    android:viewportWidth="120"
-    android:viewportHeight="100">
-    <!-- Lid -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3"
-        android:pathData="M18,4 H102 A6,6 0 0 1 108,10 V40 A6,6 0 0 1 102,46 H18 A6,6 0 0 1 12,40 V10 A6,6 0 0 1 18,4 Z" />
-    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.5"
-        android:pathData="M20,10 H100 A2,2 0 0 1 102,12 V38 A2,2 0 0 1 100,40 H20 A2,2 0 0 1 18,38 V12 A2,2 0 0 1 20,10 Z" />
-    <!-- Hinge: a solid rounded band almost the width of the body, flush with both outlines, so lid,
-         hinge and deck read as one piece with no gaps -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M17.5,46.5 H102.5 A2,2 0 0 1 104.5,48.5 V51.5 A2,2 0 0 1 102.5,53.5 H17.5 A2,2 0 0 1 15.5,51.5 V48.5 A2,2 0 0 1 17.5,46.5 Z" />
-
-
-
-
-    <!-- Deck -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3"
-        android:pathData="M18,54 H102 A6,6 0 0 1 108,60 V90 A6,6 0 0 1 102,96 H18 A6,6 0 0 1 12,90 V60 A6,6 0 0 1 18,54 Z" />
-    <!-- Centre screen -->
-    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.5"
-        android:pathData="M48,60 H72 A2,2 0 0 1 74,62 V88 A2,2 0 0 1 72,90 H48 A2,2 0 0 1 46,88 V62 A2,2 0 0 1 48,60 Z" />
-    <!-- Left stick, D-pad under it. Clear space between them, or at tile size they fuse into one glyph. -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.5"
-        android:pathData="M29,62.5 A5,5 0 1 1 28.99,62.5 Z" />
-
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M27.25,79 H30.75 V82.25 H34 V85.75 H30.75 V89 H27.25 V85.75 H24 V82.25 H27.25 Z" />
-    <!-- Face buttons, right stick under them -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M90,58.75 A2.5,2.5 0 1 1 89.99,58.75 Z M95.25,64 A2.5,2.5 0 1 1 95.24,64 Z M90,69.25 A2.5,2.5 0 1 1 89.99,69.25 Z M84.75,64 A2.5,2.5 0 1 1 84.74,64 Z" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.5"
-        android:pathData="M90,80.5 A5,5 0 1 1 89.99,80.5 Z" />
-
-
-
-
-
-
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M20,5H76A9,9 0 0 1 85,14V42.5A2,2 0 0 1 83,44.5H13A2,2 0 0 1 11,42.5V14A9,9 0 0 1 20,5ZM17.7,7.4H78.3A4.5,4.5 0 0 1 82.8,11.9V37.6A4.5,4.5 0 0 1 78.3,42.1H17.7A4.5,4.5 0 0 1 13.2,37.6V11.9A4.5,4.5 0 0 1 17.7,7.4ZM12.3,45.6H83.7A2.3,2.3 0 0 1 86,47.9V47.9A2.3,2.3 0 0 1 83.7,50.2H12.3A2.3,2.3 0 0 1 10,47.9V47.9A2.3,2.3 0 0 1 12.3,45.6ZM12,51.6H84A2,2 0 0 1 86,53.6V82A9,9 0 0 1 77,91H19A9,9 0 0 1 10,82V53.6A2,2 0 0 1 12,51.6ZM32,53.4H64A3,3 0 0 1 67,56.4V80.4A3,3 0 0 1 64,83.4H32A3,3 0 0 1 29,80.4V56.4A3,3 0 0 1 32,53.4ZM12.7,62.5A6,6 0 1 0 24.7,62.5A6,6 0 1 0 12.7,62.5ZM15.5,62.5A3.2,3.2 0 1 0 21.9,62.5A3.2,3.2 0 1 0 15.5,62.5ZM16.9,70.8H20.5V74.2H23.9V77.8H20.5V81.2H16.9V77.8H13.5V74.2H16.9ZM75.1,57.1A2.2,2.2 0 1 0 79.5,57.1A2.2,2.2 0 1 0 75.1,57.1ZM75.1,65.9A2.2,2.2 0 1 0 79.5,65.9A2.2,2.2 0 1 0 75.1,65.9ZM70.7,61.5A2.2,2.2 0 1 0 75.1,61.5A2.2,2.2 0 1 0 70.7,61.5ZM79.5,61.5A2.2,2.2 0 1 0 83.9,61.5A2.2,2.2 0 1 0 79.5,61.5ZM71.3,76A6,6 0 1 0 83.3,76A6,6 0 1 0 71.3,76ZM74.1,76A3.2,3.2 0 1 0 80.5,76A3.2,3.2 0 1 0 74.1,76Z" />
 </vector>
