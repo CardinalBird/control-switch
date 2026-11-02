@@ -527,7 +527,10 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
         else -> if (nintendo) WEST else NORTH
     }
     val faces = listOf(SlotIcon.A, SlotIcon.B, SlotIcon.X, SlotIcon.Y).map { it to at(it) }
-    val body = Palette.borderStrong
+    // A lighter body with a drawn edge, rather than one flat grey: the cut-outs still read as holes
+    // and the shape stops looking like a stencil.
+    val body = Palette.border
+    val edge = Palette.borderStrong
     val hole = Palette.screen
     val good = Palette.custom
     val tint = if (dim) Palette.textMuted else Palette.textPrimary
@@ -550,13 +553,13 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
                 val sz = Size(15f * S * u, 9f * u)
                 drawRoundRect(if (test.lit(icon)) Teal else body, at, sz, CornerRadius(4.5f * u))
                 if (value > 0f) drawRoundRect(Teal, at, sz.copy(width = sz.width * value), CornerRadius(4.5f * u))
-                if (test.passed(icon)) drawRoundRect(good, at, sz, CornerRadius(4.5f * u), style = Stroke(2f * u))
+                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, CornerRadius(4.5f * u), style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
             }
             for ((icon, x) in listOf(SlotIcon.LEFT_BUMPER to 11f, SlotIcon.RIGHT_BUMPER to 36f)) {
                 val at = Offset((x - PAD_LEFT) * S * u, 11f * u)
                 val sz = Size(17f * S * u, 10f * u)
                 drawRoundRect(if (test.lit(icon)) Teal else body, at, sz, CornerRadius(5f * u))
-                if (test.passed(icon)) drawRoundRect(good, at, sz, CornerRadius(5f * u), style = Stroke(2f * u))
+                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, CornerRadius(5f * u), style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
             }
             // The body, with the lit controls showing through its cut-outs.
             for ((stick, center, click) in listOf(
@@ -576,7 +579,11 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
             withTransform({
                 translate(-PAD_LEFT * S * u, (SHOULDERS - PAD_TOP * S) * u)
                 scale(S * u, S * u, pivot = Offset.Zero)
-            }) { drawPath(silhouette, body) }
+            }) {
+                drawPath(silhouette, body)
+                drawPath(silhouette, edge, style = Stroke(1.2f / S))
+            }
+
             // On top of the body: stick rings and dots, −/+/Home, pass rings.
             for ((stick, center, click) in listOf(
                 Triple(test.left, LEFT_STICK, SlotIcon.LEFT_STICK_CLICK), Triple(test.right, RIGHT_STICK, SlotIcon.RIGHT_STICK_CLICK),

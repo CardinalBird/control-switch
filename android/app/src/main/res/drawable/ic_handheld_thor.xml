@@ -1,28 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Minimal AYN Thor, opened: lid screen, hinge, deck with its small centre screen, D-pad left, four
-     buttons right. One colour, white on purpose: callers tint it with the theme's secondary text. -->
+<!-- The AYN Thor, opened, front on: lid with its screen, the hinge, and the deck with its small
+     centre screen, a stick over the D-pad on the left, the face buttons over a stick on the right.
+     One colour, white on purpose: callers tint it with the theme's secondary text colour, and the
+     screens are the same ink at half strength. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="120dp"
     android:height="100dp"
     android:viewportWidth="120"
     android:viewportHeight="100">
-    <!-- Lid and its screen -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4"
-        android:pathData="M18,4 H102 A8,8 0 0 1 110,12 V38 A8,8 0 0 1 102,46 H18 A8,8 0 0 1 10,38 V12 A8,8 0 0 1 18,4 Z" />
+    <!-- Lid -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3"
+        android:pathData="M18,4 H102 A6,6 0 0 1 108,10 V40 A6,6 0 0 1 102,46 H18 A6,6 0 0 1 12,40 V10 A6,6 0 0 1 18,4 Z" />
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.5"
+        android:pathData="M20,10 H100 A2,2 0 0 1 102,12 V38 A2,2 0 0 1 100,40 H20 A2,2 0 0 1 18,38 V12 A2,2 0 0 1 20,10 Z" />
+    <!-- Hinge: a solid rounded band almost the width of the body, flush with both outlines, so lid,
+         hinge and deck read as one piece with no gaps -->
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M22,12 H98 A3,3 0 0 1 101,15 V35 A3,3 0 0 1 98,38 H22 A3,3 0 0 1 19,35 V15 A3,3 0 0 1 22,12 Z" />
-    <!-- Hinge -->
+        android:pathData="M17.5,46.5 H102.5 A2,2 0 0 1 104.5,48.5 V51.5 A2,2 0 0 1 102.5,53.5 H17.5 A2,2 0 0 1 15.5,51.5 V48.5 A2,2 0 0 1 17.5,46.5 Z" />
+
+
+
+
+    <!-- Deck -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3"
+        android:pathData="M18,54 H102 A6,6 0 0 1 108,60 V90 A6,6 0 0 1 102,96 H18 A6,6 0 0 1 12,90 V60 A6,6 0 0 1 18,54 Z" />
+    <!-- Centre screen -->
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.5"
+        android:pathData="M48,60 H72 A2,2 0 0 1 74,62 V88 A2,2 0 0 1 72,90 H48 A2,2 0 0 1 46,88 V62 A2,2 0 0 1 48,60 Z" />
+    <!-- Left stick, D-pad under it. Clear space between them, or at tile size they fuse into one glyph. -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.5"
+        android:pathData="M29,62.5 A5,5 0 1 1 28.99,62.5 Z" />
+
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M42,47 H78 A2,2 0 0 1 80,49 V51 A2,2 0 0 1 78,53 H42 A2,2 0 0 1 40,51 V49 A2,2 0 0 1 42,47 Z" />
-    <!-- Deck, centre screen -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4"
-        android:pathData="M18,56 H102 A8,8 0 0 1 110,64 V88 A8,8 0 0 1 102,96 H18 A8,8 0 0 1 10,88 V64 A8,8 0 0 1 18,56 Z" />
+        android:pathData="M27.25,79 H30.75 V82.25 H34 V85.75 H30.75 V89 H27.25 V85.75 H24 V82.25 H27.25 Z" />
+    <!-- Face buttons, right stick under them -->
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M47,63 H73 A3,3 0 0 1 76,66 V86 A3,3 0 0 1 73,89 H47 A3,3 0 0 1 44,86 V66 A3,3 0 0 1 47,63 Z" />
-    <!-- D-pad -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M24.5,66 H29.5 V73.5 H37 V78.5 H29.5 V86 H24.5 V78.5 H17 V73.5 H24.5 Z" />
-    <!-- Face buttons -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M89,68 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z M96,76 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z M89,84 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z M82,76 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 Z" />
+        android:pathData="M90,58.75 A2.5,2.5 0 1 1 89.99,58.75 Z M95.25,64 A2.5,2.5 0 1 1 95.24,64 Z M90,69.25 A2.5,2.5 0 1 1 89.99,69.25 Z M84.75,64 A2.5,2.5 0 1 1 84.74,64 Z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.5"
+        android:pathData="M90,80.5 A5,5 0 1 1 89.99,80.5 Z" />
+
+
+
+
+
+
 </vector>
