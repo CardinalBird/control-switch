@@ -45,15 +45,16 @@ app, retargeted to the AYN Thor and renamed Control Switch.
 
 </div>
 
-## New in 0.6.0
+## New in 0.7.0
 
-- **Controller tests** — pick the Thor's own pad or any controller and press everything: a live
-  drawing lights up, and a checklist ticks off every button, both sticks (a full circle plus the
-  click) and both triggers. Hold **B** to leave
-- **Motion test** — **Y** on the same page turns the pad's gyro into three rows (pitch, yaw, roll)
-  with a rolling ball and live deg/s, reading whichever gyro the DSU port is serving
-- **Steadier gyro** — the Thor's drift filter was sized for 50 Hz and was absorbing smooth turns at
-  200 Hz; emulators now get the full turn
+- **No more accidental exits** — while mirroring starts, the app shows "Starting mirroring…" and
+  holds your controller's buttons until the mirror is live, so **B** can't close it mid-start
+- **Low battery warning** — a heads-up notification when a mirrored Switch-style pad drops to
+  one bar; the controller tile shows **Low** too
+- **Mirrored controller test** — **X** on Controller tests runs the checklist through the mirror,
+  the way games see your pad, and rumbles it on every press
+- **Cleaner screens** — the Android status bar is hidden (swipe down to peek), the Virtual mouse
+  setting is gone, and the Thor and controller icons are redrawn
 
 ## What it does
 
