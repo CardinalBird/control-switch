@@ -215,7 +215,11 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     }
     LaunchedEffect(pausedPending, state.enabled, pads) {
         if (!pausedPending || state.enabled) return@LaunchedEffect
-        val raw = pads.firstOrNull { !it.isInternal() } ?: pads.firstOrNull() ?: return@LaunchedEffect
+        // Player 1's own pad, once Android lists it again; never the handheld, which is all there is
+        // for a moment after the mirror stops and before the unhidden pad reappears.
+        val p1 = state.player1Name ?: state.externalDevice?.name
+        val raw = pads.firstOrNull { !it.isInternal() && it.name.equals(p1, ignoreCase = true) }
+            ?: pads.firstOrNull { !it.isInternal() } ?: return@LaunchedEffect
         pausedPending = false
         start(raw)
     }

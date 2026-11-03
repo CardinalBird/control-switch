@@ -49,10 +49,10 @@ internal class AndroidMappingRepository(context: Context) : MappingRepository {
         prefs.edit().putString(customKeyOf(key), mapping.serialize()).apply()
     }
 
-    // Nintendo until the user picks another: the Thor is a Nintendo-layout handheld, so a new pad
-    // should answer to the letters its games show.
+    // Null until the user picks one: [MappingEditorController.followPlayer1Layout] then gives only an
+    // untouched pad the Nintendo default, rather than every pad that isn't already on Nintendo.
     override fun player1Layout(): PadLayout? =
-        PadLayout.entries.firstOrNull { it.name == prefs.getString(PLAYER1_LAYOUT, null) } ?: PadLayout.NINTENDO
+        PadLayout.entries.firstOrNull { it.name == prefs.getString(PLAYER1_LAYOUT, null) }
 
     override fun setPlayer1Layout(layout: PadLayout) {
         prefs.edit().putString(PLAYER1_LAYOUT, layout.name).apply()

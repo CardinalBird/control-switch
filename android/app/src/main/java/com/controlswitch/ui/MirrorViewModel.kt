@@ -305,20 +305,29 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
                 }
                 MirrorStateStore.wake()
             } catch (error: Exception) {
-                _state.update { it.copy(comboHoldKillApp = !nextValue, message = error.message ?: error.toString()) }
+                _state.update {
+                    it.copy(comboHoldKillApp = current.comboHoldKillApp, selectStartBack = current.selectStartBack, message = error.message ?: error.toString())
+                }
             }
         }
     }
 
     fun toggleSelectStartBack(nextValue: Boolean) {
-        if (_state.value.busy) return
+        val current = _state.value
+        if (current.busy) return
         _state.update { it.copy(selectStartBack = nextValue, comboHoldKillApp = if (nextValue) false else it.comboHoldKillApp) }
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                graph.settingsRepository.setSelectStartBack(nextValue)
-                if (nextValue) graph.setComboHoldKillAppEnabled(false)
+            try {
+                withContext(Dispatchers.IO) {
+                    graph.settingsRepository.setSelectStartBack(nextValue)
+                    if (nextValue) graph.setComboHoldKillAppEnabled(false)
+                }
+                MirrorStateStore.wake()
+            } catch (error: Exception) {
+                _state.update {
+                    it.copy(selectStartBack = current.selectStartBack, comboHoldKillApp = current.comboHoldKillApp, message = error.message ?: error.toString())
+                }
             }
-            MirrorStateStore.wake()
         }
     }
 
@@ -417,7 +426,10 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
             // pad for them changes nothing that matters.
             val picked = if (fromBuiltIn) {
                 val s = _state.value
-                s.devices.filter { !it.isInternal }.lockedPlayer1(s.player1Name, s.player1Path) ?: return@launch
+                // No saved player 1 yet: the mirror runs the first external, the one it reports.
+                s.devices.filter { !it.isInternal }.lockedPlayer1(s.player1Name, s.player1Path)
+                    ?: s.devices.firstOrNull { !it.isInternal && it.path != null && it.path == s.externalDevice?.path }
+                    ?: return@launch
             } else {
                 device
             }

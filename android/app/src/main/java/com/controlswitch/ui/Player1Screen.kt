@@ -124,8 +124,8 @@ fun Player1Screen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     // A plays the same thump as moving around the menus: Android's own navigation sound, so it
-    // matches and follows the system's sound setting. L + R stays silent: it only stages the pad.
-    // Heard on A, when the pick is made player 1. L + R stays silent: it only stages the pad.
+    // matches and follows the system's sound setting. Heard on A, when the pick is made player 1.
+    // L + R stays silent: it only stages the pad.
     val view = LocalView.current
 
     // Only the pad picked on this visit: the page starts from nothing every time.

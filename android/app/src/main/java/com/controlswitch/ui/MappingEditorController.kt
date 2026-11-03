@@ -328,9 +328,13 @@ class MappingEditorController(
     /** This pad's saved custom layout, read on open; null until one has been set up. */
     private var customSaved: ControllerMapping? = null
 
+    /** The editor's target-keyed maps as the stored, source-first mapping. */
+    private fun toMapping(bindings: Map<ControlRef, ControlRef>, chords: Map<ControlRef, List<ControlRef>>) =
+        ControllerMapping(bindings.map { Binding(it.value, it.key) }, chords.map { Chord(it.value, it.key) })
+
     private fun keepCustom(bindings: Map<ControlRef, ControlRef>, chords: Map<ControlRef, List<ControlRef>>) {
         val key = mappingKey ?: return
-        val mapping = ControllerMapping(bindings.map { Binding(it.value, it.key) }, chords.map { Chord(it.value, it.key) })
+        val mapping = toMapping(bindings, chords)
         if (mapping.isEmpty) return
         customSaved = mapping
         _state.update { it.copy(hasCustom = true) }
@@ -355,7 +359,7 @@ class MappingEditorController(
         val startedAt = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             val generation = withContext(NonCancellable) {
-                mappings.save(key, ControllerMapping(bindings.map { Binding(it.value, it.key) }, chords.map { Chord(it.value, it.key) }))
+                mappings.save(key, toMapping(bindings, chords))
                 mappings.setSeeded(key, false)
                 settings.bumpConfigGeneration()
                 settings.getSettings().configGeneration
@@ -384,7 +388,8 @@ class MappingEditorController(
         if (!settingUpCustom) return
         settingUpCustom = false
         commit(switching = null)
-        _state.update { it.copy(customJustSaved = it.customJustSaved + 1) }
+        // keepCustom stores nothing for an empty mapping: no "saved" banner for that.
+        if (customSaved != null) _state.update { it.copy(customJustSaved = it.customJustSaved + 1) }
     }
 
     /**
@@ -400,10 +405,17 @@ class MappingEditorController(
     fun followPlayer1Layout(key: MappingKey) {
         if (_state.value.open) return
         scope.launch(Dispatchers.IO) {
-            val wanted = runCatching { mappings.player1Layout() }.getOrNull() ?: return@launch
+            val stored = runCatching { mappings.storedLayout(key) }.getOrNull()
+            // Nothing picked for player 1 yet: Nintendo, the Thor's own, but only for a pad still on
+            // its profile. One the user set up by hand (Guided setup, or a preset before layouts
+            // followed the slot) keeps what it has.
+            val untouched = runCatching { mappings.isSeeded(key) || mappings.get(key).isEmpty }.getOrDefault(false)
+            val wanted = runCatching { mappings.player1Layout() }.getOrNull()
+                ?: PadLayout.NINTENDO.takeIf { stored == null && untouched }
+                ?: return@launch
             // Against what was set, not the Nintendo shown for a pad never set: that pad still has its
             // profile's Xbox-style mapping and needs the preset applied.
-            if (runCatching { mappings.storedLayout(key) }.getOrNull() == wanted) return@launch
+            if (stored == wanted) return@launch
             // A pad with no mapping yet starts from its profile, like an editor opened on it would.
             seedDefaultMapping(key)
             val mapping = if (wanted == PadLayout.CUSTOM) {
@@ -513,10 +525,7 @@ class MappingEditorController(
                 // bump stored the mapping and told nobody: the badge showed the new mapping while the
                 // pad went on using the old one until something unrelated restarted the daemon.
                 withContext(NonCancellable) {
-                    val mapping = ControllerMapping(
-                        bindings.map { Binding(it.value, it.key) },
-                        chords.map { Chord(it.value, it.key) },
-                    )
+                    val mapping = toMapping(bindings, chords)
                     if (mapping.isEmpty) {
                         mappings.clear(key)
                         // Clearing everything means "back to how this should be", and for a pad the
@@ -663,7 +672,6 @@ class MappingEditorController(
             }
             return if (advanceWalk()) CaptureVerdict.Next else CaptureVerdict.Accepted
         }
-        if (slot.icon == SlotIcon.BACK) setSelectStartBack(false)
         // The same combination on two slots would fire both; refused like a single control is.
         val taken = _state.value.chords.entries.firstOrNull { it.value.toSet() == set && it.key != slot.target }
         val walk = _state.value.walk
@@ -679,6 +687,9 @@ class MappingEditorController(
             _state.update { it.copy(notice = "Up to ${Chord.MAX_PER_MAPPING} combinations per controller") }
             return CaptureVerdict.Refused
         }
+        // Accepted, so the user's own Back replaces Select + Start as Back. Not before: a refused
+        // chord binds nothing and must not cost the setting.
+        if (slot.icon == SlotIcon.BACK) setSelectStartBack(false)
         _state.update {
             it.copy(
                 chords = it.chords + (slot.target to sources), bindings = it.bindings - slot.target,
