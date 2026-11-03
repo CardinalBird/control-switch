@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import com.controlswitch.DsuClient
 import com.controlswitch.MirrorStateStore
+import com.controlswitch.domain.model.ControllerDevice
 import com.controlswitch.domain.model.PadLayout
 import com.controlswitch.domain.model.SlotIcon
 import com.controlswitch.ui.theme.Palette
@@ -82,7 +83,18 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     val internalName = state.localDevice?.name
     // Re-read when the supervisor sees pads come or go, and when the mirror stops and the external
     // pad reappears to Android.
-    val pads = remember(state.devices, state.enabled) { connectedPads(internalName) }
+    val allPads = remember(state.devices, state.enabled) { connectedPads(internalName) }
+    // Mirroring runs on, by default: the pad is tested as player 1, through the mirror, as games see
+    // it. Pausing it (X) is the exception, for testing a pad raw; holding it off whenever this page
+    // was open meant every visit stopped and restarted the mirror, and while it was stopped the pad
+    // reported its own Xbox buttons instead of the layout the user had picked.
+    var paused by remember { mutableStateOf(false) }
+    // While mirroring, the handheld's own device carries player 1's pad: it is listed as player 1.
+    val playerOneLive = !paused && state.enabled && state.externalDevice != null
+    // ...and the mirrored pad's own device is left off, or one pad is offered twice. The firmware
+    // republishes only one external pad, so a second pad picked as player 1 has no twin to hide and
+    // stays listed under its own name while the mirror holds it.
+    val pads = if (playerOneLive) allPads.filterNot { it.isMirroredSource(state.externalDevice, internalName) } else allPads
     var padId by remember { mutableIntStateOf(-1) }
     val pad = pads.firstOrNull { it.id == padId } ?: pads.firstOrNull()
     var testingRaw by remember { mutableStateOf(false) }
@@ -103,15 +115,8 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     var motionBuiltIn by remember { mutableStateOf(false) }
     var motionLabel by remember { mutableStateOf("") }
     var motionTest by remember { mutableStateOf(MotionTest()) }
-    // Mirroring runs on, by default: the pad is tested as player 1, through the mirror, as games see
-    // it. Pausing it (X) is the exception, for testing a pad raw; holding it off whenever this page
-    // was open meant every visit stopped and restarted the mirror, and while it was stopped the pad
-    // reported its own Xbox buttons instead of the layout the user had picked.
-    var paused by remember { mutableStateOf(false) }
     // Set by X until the mirror has stood down, then the pad is tested raw.
     var pausedPending by remember { mutableStateOf(false) }
-    // While mirroring, the handheld's own device carries player 1's pad: it is listed as player 1.
-    val playerOneLive = !paused && state.enabled && state.externalDevice != null
     // The saved player 1 by name: known from the first frame, where the resolved device can still be
     // the main screen's "Waiting for external controller" placeholder just after launch.
     val playerOneName = state.player1Name ?: state.externalDevice?.name ?: "through the mirror"
@@ -456,6 +461,14 @@ private fun Vibrator.buzz() {
 private fun InputDevice.isHandheldPad(internalName: String?): Boolean =
     name.equals(internalName, ignoreCase = true) ||
         (vendorId == 0x2020 && productId == 0x0111 && name.startsWith("Odin", ignoreCase = true))
+
+/**
+ * Whether this is the device of the pad being mirrored, still listed by Android. Matched by name, and
+ * by player number when there is one, so a second pad of the same model stays listed.
+ */
+private fun InputDevice.isMirroredSource(mirrored: ControllerDevice?, internalName: String?): Boolean =
+    mirrored != null && !isHandheldPad(internalName) && name.equals(mirrored.name, ignoreCase = true) &&
+        (mirrored.controllerNumber <= 0 || controllerNumber == mirrored.controllerNumber)
 
 /** The real game controllers Android lists right now, the handheld's own first. */
 private fun connectedPads(internalName: String?): List<InputDevice> =
