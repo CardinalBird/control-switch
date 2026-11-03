@@ -5,7 +5,6 @@ import com.controlswitch.domain.model.MirrorStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Single source of truth for the mirror snapshot, shared process-wide between the background
@@ -61,16 +60,8 @@ object MirrorStateStore {
         }
     }
 
-    // Set when a controller came or went since the supervisor last looked.
-    private val controllersChanged = AtomicBoolean(false)
-
-    /** A controller was added or removed: wake the supervisor, and let it retry a failed start. */
-    fun controllersChanged() {
-        controllersChanged.set(true)
-        wake()
-    }
-
-    fun consumeControllersChanged(): Boolean = controllersChanged.getAndSet(false)
+    /** A controller was added or removed: wake the supervisor to look at the new list. */
+    fun controllersChanged() = wake()
 
     /** Cut the supervisor's sleep short: a setting changed, or a display came or went. */
     fun wake() {

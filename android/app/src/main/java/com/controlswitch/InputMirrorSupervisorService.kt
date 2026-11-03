@@ -135,17 +135,13 @@ class InputMirrorSupervisorService : Service() {
         }
 
         var nextRestartAllowedAt = 0L
-        var nextStartRetryAllowedAt = 0L
+        val startBackoff = StartBackoff()
         var nextBatteryCheckAt = 0L
         var sleepMs = SUPERVISOR_INTERVAL_MS
 
         while (running) {
             try {
                 val now = System.currentTimeMillis()
-                // A start that failed is usually a pad caught mid-connect; once the pads have changed
-                // it deserves another go now, not a minute later. The restart throttle still spaces
-                // attempts, so the mirror's own hide/unhide churn cannot turn this into a loop.
-                if (MirrorStateStore.consumeControllersChanged()) nextStartRetryAllowedAt = 0L
                 val settings = graph.settingsRepository.getSettings()
                 val dockActive = graph.dockStateRepository.isDockActive()
                 val mirrorAllowed = dockActive || settings.mirrorWhenHandheld
@@ -168,6 +164,8 @@ class InputMirrorSupervisorService : Service() {
                 } else {
                     emptyList()
                 }
+                val padPaths = allDevices.mapTo(HashSet()) { it.path }
+                startBackoff.seen(padPaths)
                 // While nothing is running, heal any node a crashed daemon left hidden so a stuck,
                 // invisible external controller can recover on its own (no-op unless there's a
                 // hidden-state record to restore).
@@ -210,7 +208,7 @@ class InputMirrorSupervisorService : Service() {
                     devices = devices,
                     settings = settings,
                     mirrorRunning = mirrorRunning,
-                    restartAllowed = now >= nextRestartAllowedAt && now >= nextStartRetryAllowedAt,
+                    restartAllowed = now >= nextRestartAllowedAt && startBackoff.allows(now),
                     appliedGeneration = if (mirrorRunning) {
                         graph.processRepository.appliedConfigGeneration()
                     } else {
@@ -268,7 +266,7 @@ class InputMirrorSupervisorService : Service() {
                         if (startMirror(request)) {
                             updateSupervisorState(SupervisorState.Active)
                         } else {
-                            nextStartRetryAllowedAt = now + START_RETRY_BACKOFF_MS
+                            startBackoff.failed(now, padPaths)
                         }
                         nextRestartAllowedAt = now + RESTART_THROTTLE_MS
                         sleepMs = SUPERVISOR_INTERVAL_MS
@@ -280,7 +278,7 @@ class InputMirrorSupervisorService : Service() {
                         if (startMirror(request)) {
                             updateSupervisorState(SupervisorState.Active)
                         } else {
-                            nextStartRetryAllowedAt = now + START_RETRY_BACKOFF_MS
+                            startBackoff.failed(now, padPaths)
                         }
                         nextRestartAllowedAt = now + RESTART_THROTTLE_MS
                         sleepMs = SUPERVISOR_INTERVAL_MS
@@ -445,7 +443,6 @@ class InputMirrorSupervisorService : Service() {
         private const val SUPERVISOR_WAITING_FOR_DEVICE_INTERVAL_MS = 6000L
         private const val SUPERVISOR_ERROR_INTERVAL_MS = 15000L
         private const val RESTART_THROTTLE_MS = 10000L
-        private const val START_RETRY_BACKOFF_MS = 60000L
     }
 }
 
@@ -460,4 +457,37 @@ internal fun newlyLow(levels: Map<String, PadBattery>, warned: MutableSet<String
     val fresh = low - warned
     warned.addAll(fresh)
     return fresh
+}
+
+/**
+ * The wait after a failed mirror start. A start that failed is usually a pad caught mid-connect, so
+ * a pad that wasn't there at the failure lifts the wait: it deserves another go now, not a minute
+ * later.
+ *
+ * Any device change used to lift it, including the failed start's own churn: starting hides the
+ * external pad and failing restores it, which Android reports as a device removed and added. So a
+ * start that kept failing was retried at the 10 s restart throttle instead of every minute. The
+ * restored pad comes back at the same /dev/input path; a pad that newly connects gets a new one.
+ * Known gap: the very pad that failed, finishing its connect at its old path, waits out the minute.
+ */
+internal class StartBackoff {
+    private var retryAllowedAt = 0L
+    private var padsAtFailure: Set<String> = emptySet()
+
+    /** [pads] are the /dev/input paths listed on the tick that tried the start. */
+    fun failed(now: Long, pads: Set<String>) {
+        retryAllowedAt = now + BACKOFF_MS
+        padsAtFailure = pads
+    }
+
+    /** Called every tick with the paths listed now. */
+    fun seen(pads: Set<String>) {
+        if (retryAllowedAt != 0L && !padsAtFailure.containsAll(pads)) retryAllowedAt = 0L
+    }
+
+    fun allows(now: Long): Boolean = now >= retryAllowedAt
+
+    companion object {
+        const val BACKOFF_MS = 60_000L
+    }
 }
