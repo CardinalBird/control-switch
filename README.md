@@ -45,6 +45,10 @@ app, retargeted to the AYN Thor and renamed Control Switch.
 
 </div>
 
+## New in 0.7.1
+
+- **New Thor icon** on the main screen: a cleaner one-colour drawing of the Thor
+
 ## New in 0.7.0
 
 - **No more accidental exits** — while mirroring starts, the app shows "Starting mirroring…" and
