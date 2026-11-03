@@ -114,7 +114,8 @@ class MappingEditorController(
 
     // One lane for everything that writes the control FIFO. cancelBind/clear used to fire
     // "capture off" on a free IO thread, unordered with the next bind's "capture button": B then A
-    // quickly could land the off AFTER the new capture opened, and the overlay waited forever.
+    // quickly could land the off AFTER the new capture opened, and the overlay waited forever. The
+    // Select + Start is Back setting writes here too, so off-then-on can never be saved as off.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val fifo = Dispatchers.IO.limitedParallelism(1)
     private var mappingKey: MappingKey? = null
@@ -739,7 +740,7 @@ class MappingEditorController(
     private fun setSelectStartBack(enabled: Boolean) {
         if (_state.value.selectStartBack == enabled) return
         _state.update { it.copy(selectStartBack = enabled) }
-        scope.launch(Dispatchers.IO) {
+        scope.launch(fifo) {
             settings.setSelectStartBack(enabled)
             if (enabled) settings.setComboHoldKillAppEnabled(false)
             wakeSupervisor()
