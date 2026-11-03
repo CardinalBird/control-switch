@@ -45,6 +45,16 @@ app, retargeted to the AYN Thor and renamed Control Switch.
 
 </div>
 
+## New in 0.7.2
+
+- **Change Controller** works like the Switch's screen: press L + R on a pad to make it player 1
+- **Button layouts**: Xbox, Nintendo (now the default) or your own Custom layout per controller
+- **Select + Start is Back** — a new setting, on by default
+- **Controller Tester** tests player 1 through the running mirror; X pauses it for a raw test.
+  Rumble now works on every press
+- **Faster pad pickup**: the mirror reacts the moment a controller connects or wakes
+- Upgrading keeps any mapping you built yourself
+
 ## New in 0.7.1
 
 - **New Thor icon** on the main screen: a cleaner one-colour drawing of the Thor
