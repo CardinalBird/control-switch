@@ -21,4 +21,19 @@ class PadBatteryReaderTest {
             parsePadBatteries(out),
         )
     }
+
+    @Test
+    fun readsPercentFromHidPowerSupplies() {
+        // As read on a Thor with an Xbox pad over Bluetooth; the second pad has not reported yet,
+        // so the kernel gives no capacity.
+        val out = """
+            PSU|Xbox Wireless Controller|62|Discharging
+            PSU|Other Pad|||
+            Xbox Wireless Controller| 01 00 80
+        """.trimIndent()
+        assertEquals(
+            mapOf("Xbox Wireless Controller" to PadBattery(level = 2, charging = false, percent = 62)),
+            parsePadBatteries(out),
+        )
+    }
 }

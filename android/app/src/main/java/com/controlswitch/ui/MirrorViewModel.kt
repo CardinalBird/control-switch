@@ -43,6 +43,7 @@ data class MirrorUiState(
     val message: String = "",
     val homeMode: HomeButtonMode = HomeButtonMode.HOME,
     val comboHoldKillApp: Boolean = false,
+    val selectStartBack: Boolean = true,
     val autoMirrorEnabled: Boolean = true,
     val restartWaiting: Boolean = false,
     val docked: Boolean = false,
@@ -69,7 +70,7 @@ data class MirrorUiState(
     val mirrorWhenHandheld: Boolean = false,
     val theme: AppTheme = AppTheme.DARK,
     // Which console's button icons to draw: the preset last applied to the external pad.
-    val padLayout: PadLayout = PadLayout.XBOX,
+    val padLayout: PadLayout = PadLayout.NINTENDO,
     // Switch-protocol pads' charge by name, read from their raw reports (see refreshPadBatteries).
     val padLevels: Map<String, PadBattery> = emptyMap(),
 ) {
@@ -130,7 +131,11 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
         // Fired once the editor has finished writing, so the card's badge reflects what was just
         // saved instead of waiting for a supervisor snapshot that a mapping edit never triggers.
         onMappingChanged = ::refreshMappingBadges,
+        wakeSupervisor = MirrorStateStore::wake,
     )
+
+    /** The pad [MappingEditorController.followPlayer1Layout] last ran for. */
+    private var layoutFollowedFor: MappingKey? = null
 
     fun openMappingEditor() {
         val device = _state.value.externalDevice ?: return
@@ -229,6 +234,7 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
                 // just made, which briefly flipped the switch back.
                 homeMode = saved.homeMode,
                 comboHoldKillApp = saved.comboHoldKillApp,
+                selectStartBack = saved.selectStartBack,
                 rumbleStrength = saved.rumbleStrength,
                 mirrorWhenHandheld = saved.mirrorWhenHandheld,
                 autoMirrorEnabled = status.autoMirrorEnabled,
@@ -240,9 +246,16 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
                 // otherwise wear them out of the box.
                 mappedControlCount = externalDevice?.mappingKey?.let(::mappedCountFor),
                 hasSeededMapping = externalDevice?.mappingKey?.let(::isSeededFor) ?: false,
-                padLayout = externalDevice?.mappingKey?.let(graph.mappingRepository::layout) ?: PadLayout.XBOX,
+                padLayout = externalDevice?.mappingKey?.let(graph.mappingRepository::layout) ?: PadLayout.NINTENDO,
                 message = buildStatusMessage(status, available, saved),
             )
+        }
+        // A different pad is player 1 now (Change Controller, or the locked pad reconnecting under a
+        // new identity): it takes player 1's layout. Once per change, not on every snapshot.
+        val key = externalDevice?.mappingKey
+        if (key != null && key != layoutFollowedFor) {
+            layoutFollowedFor = key
+            mappingEditor.followPlayer1Layout(key)
         }
     }
 
@@ -278,16 +291,42 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
 
     // Option toggles only persist the setting; if the mirror is running with different flags the
     // supervisor notices (started* snapshot vs current settings) and restarts it automatically.
+    // Select + Start closes the app, or is Back: one combination, so at most one of the two. Turning
+    // either on turns the other off.
     fun toggleComboHoldKillApp(nextValue: Boolean) {
         val current = _state.value
         if (current.busy) return
-        _state.update { it.copy(comboHoldKillApp = nextValue) }
+        _state.update { it.copy(comboHoldKillApp = nextValue, selectStartBack = if (nextValue) false else it.selectStartBack) }
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) { graph.setComboHoldKillAppEnabled(nextValue) }
+                withContext(Dispatchers.IO) {
+                    graph.setComboHoldKillAppEnabled(nextValue)
+                    if (nextValue) graph.settingsRepository.setSelectStartBack(false)
+                }
                 MirrorStateStore.wake()
             } catch (error: Exception) {
-                _state.update { it.copy(comboHoldKillApp = !nextValue, message = error.message ?: error.toString()) }
+                _state.update {
+                    it.copy(comboHoldKillApp = current.comboHoldKillApp, selectStartBack = current.selectStartBack, message = error.message ?: error.toString())
+                }
+            }
+        }
+    }
+
+    fun toggleSelectStartBack(nextValue: Boolean) {
+        val current = _state.value
+        if (current.busy) return
+        _state.update { it.copy(selectStartBack = nextValue, comboHoldKillApp = if (nextValue) false else it.comboHoldKillApp) }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    graph.settingsRepository.setSelectStartBack(nextValue)
+                    if (nextValue) graph.setComboHoldKillAppEnabled(false)
+                }
+                MirrorStateStore.wake()
+            } catch (error: Exception) {
+                _state.update {
+                    it.copy(selectStartBack = current.selectStartBack, comboHoldKillApp = current.comboHoldKillApp, message = error.message ?: error.toString())
+                }
             }
         }
     }
@@ -378,10 +417,25 @@ class MirrorViewModel(private val appContext: Context) : ViewModel() {
             // node and fell back to the name, so look again rather than settle for that.
             val device = _state.value.devices.byNumber()
                 ?: runCatching { withContext(Dispatchers.IO) { graph.getConnectedDevices() } }.getOrNull()?.byNumber()
-            if (device?.isInternal == true || name.equals(_state.value.localDevice?.name, ignoreCase = true)) return@launch
+            val fromBuiltIn = device?.isInternal == true || name.equals(_state.value.localDevice?.name, ignoreCase = true)
+            // L + R through the handheld's own device is the mirrored pad's, not the built-in one's,
+            // whenever that pad is connected: until the mirror has finished pausing (or wherever the
+            // firmware republishes a pad as its own) the daemon is still writing that pad's presses
+            // into the built-in device. Throwing those away left the page ignoring the very pad the
+            // user was holding. The built-in controls can never be player 1, so naming the mirrored
+            // pad for them changes nothing that matters.
+            val picked = if (fromBuiltIn) {
+                val s = _state.value
+                // No saved player 1 yet: the mirror runs the first external, the one it reports.
+                s.devices.filter { !it.isInternal }.lockedPlayer1(s.player1Name, s.player1Path)
+                    ?: s.devices.firstOrNull { !it.isInternal && it.path != null && it.path == s.externalDevice?.path }
+                    ?: return@launch
+            } else {
+                device
+            }
             // The lookup above can outlive the picker.
             if (!_state.value.pickingPlayer1) return@launch
-            _state.update { it.copy(pendingPlayer1Name = device?.name ?: name, pendingPlayer1Path = device?.path) }
+            _state.update { it.copy(pendingPlayer1Name = picked?.name ?: name, pendingPlayer1Path = picked?.path) }
         }
     }
 

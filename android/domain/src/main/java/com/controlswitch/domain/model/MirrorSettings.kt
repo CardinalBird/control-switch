@@ -10,6 +10,9 @@ data class MirrorSettings(
     val targetGuid: String? = null,
     val homeMode: HomeButtonMode = HomeButtonMode.HOME,
     val comboHoldKillApp: Boolean = false,
+    // Select + Start together is Android's Back, unless the user binds Back to something else. On by
+    // default; it and comboHoldKillApp share the combination, so turning one on turns the other off.
+    val selectStartBack: Boolean = true,
     // Always false since 0.7: the Select + R3 pointer never worked reliably and its switch is gone
     // from Additional Settings. ponytail: the daemon still carries mouse.c and the --virtual-mouse
     // flag this feeds; delete both together with an on-device e2e run.

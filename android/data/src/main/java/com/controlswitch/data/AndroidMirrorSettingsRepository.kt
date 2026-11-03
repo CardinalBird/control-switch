@@ -18,6 +18,7 @@ class AndroidMirrorSettingsRepository(context: Context) : MirrorSettingsReposito
             targetGuid = prefs.getString(KEY_TARGET_GUID, null),
             homeMode = readHomeMode(),
             comboHoldKillApp = prefs.getBoolean(KEY_COMBO_HOLD_KILL_APP, false),
+            selectStartBack = prefs.getBoolean(KEY_SELECT_START_BACK, true),
             rumbleStrength = prefs.getInt(KEY_RUMBLE_STRENGTH, 80),
             autoMirrorEnabled = prefs.getBoolean(KEY_AUTO_MIRROR_ENABLED, true),
             mirrorWhenHandheld = prefs.getBoolean(KEY_MIRROR_WHEN_HANDHELD, false),
@@ -64,6 +65,10 @@ class AndroidMirrorSettingsRepository(context: Context) : MirrorSettingsReposito
     }
 
     override fun setComboHoldKillAppEnabled(enabled: Boolean) = setLiveOption(KEY_COMBO_HOLD_KILL_APP, enabled)
+
+    // Not a daemon flag: the supervisor turns it into a chord on the mapping it pushes. Still a live
+    // option, so the generation moves and that mapping is pushed again.
+    override fun setSelectStartBack(enabled: Boolean) = setLiveOption(KEY_SELECT_START_BACK, enabled)
 
 
     override fun setRumbleStrength(percent: Int) = synchronized(generationLock) {

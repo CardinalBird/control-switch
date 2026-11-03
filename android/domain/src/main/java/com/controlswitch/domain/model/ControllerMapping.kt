@@ -51,6 +51,37 @@ data class Chord(val sources: List<ControlRef>, val target: ControlRef) {
     }
 }
 
+/** Linux BTN_SELECT / BTN_START: what every standard pad driver, Nintendo's included, reports them as. */
+private const val BTN_SELECT_CODE = 0x13a
+private const val BTN_START_CODE = 0x13b
+
+/** Select + Start held together as the handheld's Back, the "Select + Start is Back" setting. */
+val SELECT_START_BACK = Chord(
+    listOf(ControlRef.button(BTN_SELECT_CODE), ControlRef.button(BTN_START_CODE)),
+    ControlRef.button(KEY_BACK),
+)
+
+/** Whether this is [SELECT_START_BACK], held in either order. */
+fun Chord.isSelectStartBack(): Boolean =
+    target == SELECT_START_BACK.target && sources.toSet() == SELECT_START_BACK.sources.toSet()
+
+/**
+ * The mapping as the mirror should run it, with the "Select + Start is Back" setting applied: the
+ * chord added when the setting is on and the user has not put Back on anything else, and gone when it
+ * is off. Applied on the way to the daemon rather than saved, so the setting stays one switch for
+ * every pad, and a Back the user bound themselves always wins.
+ *
+ * A Select + Start → Back chord already saved (Guided setup used to walk Back, and that is what most
+ * people pressed there) is treated as the setting's, which is why it goes when the setting is off.
+ */
+fun ControllerMapping.withSelectStartBack(enabled: Boolean): ControllerMapping {
+    val own = copy(chords = chords.filterNot { it.isSelectStartBack() })
+    if (!enabled) return own
+    val back = SELECT_START_BACK.target
+    val backTaken = own.bindings.any { it.target == back } || own.chords.any { it.target == back }
+    return if (backTaken) own else own.copy(chords = own.chords + SELECT_START_BACK)
+}
+
 /**
  * A user-captured correction for a controller whose layout doesn't match what the mirror assumes.
  *

@@ -81,8 +81,16 @@ internal fun AdditionalSettingsScreen(
                 title = "Select + Start closes app",
                 minHeight = 40.dp,
                 onClick = { viewModel.toggleComboHoldKillApp(!state.comboHoldKillApp) },
-                modifier = Modifier.focusRequester(first).then(explains("Hold both for 3 seconds to close the game you're in.")),
+                modifier = Modifier.focusRequester(first).then(
+                    explains("Hold both for 3 seconds to close the game you're in. Turns off Select + Start is Back."),
+                ),
             ) { RowSwitch(state.comboHoldKillApp, !state.busy) }
+            MenuRow(
+                title = "Select + Start is Back",
+                minHeight = 40.dp,
+                onClick = { viewModel.toggleSelectStartBack(!state.selectStartBack) },
+                modifier = explains("Press both together for Android's Back. Binding Back to another button turns this off."),
+            ) { RowSwitch(state.selectStartBack, !state.busy) }
 
             val always = state.mirrorWhenHandheld
             val flip = { viewModel.setMirrorWhenHandheld(!always) }
@@ -119,7 +127,7 @@ internal fun AdditionalSettingsScreen(
                 onClick = { step(1) },
                 onLeft = { step(-1) },
                 onRight = { step(1) },
-                modifier = explains("Left and right to change the colours."),
+                modifier = explains("Press left or right to change the colours."),
             ) {
                 val name = when (state.theme) {
                     AppTheme.DARK -> "Dark"
@@ -129,7 +137,7 @@ internal fun AdditionalSettingsScreen(
                 RowValue("‹  $name  ›", accent = true)
             }
             MenuRow(
-                title = "Controller tests",
+                title = "Controller tester",
                 minHeight = 40.dp,
                 onClick = onOpenTests,
                 modifier = explains("Check every button, stick and trigger on any connected controller."),
@@ -141,7 +149,7 @@ internal fun AdditionalSettingsScreen(
                     title = "Add to home screen",
                     minHeight = 40.dp,
                     onClick = { context.pinToHome() },
-                    modifier = explains("Pin this app to your launcher."),
+                    modifier = explains("Add Control Switch to your home screen."),
                 )
             }
         }

@@ -1,10 +1,12 @@
 package com.controlswitch
 
+import com.controlswitch.domain.model.withSelectStartBack
 import com.controlswitch.domain.model.HomeButtonMode
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.hardware.display.DisplayManager
+import android.hardware.input.InputManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
@@ -34,6 +36,13 @@ class InputMirrorSupervisorService : Service() {
         override fun onDisplayRemoved(displayId: Int) = MirrorStateStore.wake()
         override fun onDisplayChanged(displayId: Int) = Unit
     }
+    // A pad switched on, woken from sleep or dropped: act now. Waiting for the next pass left a
+    // docked player holding a live controller for up to six seconds before it did anything.
+    private val padWake = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = MirrorStateStore.controllersChanged()
+        override fun onInputDeviceRemoved(deviceId: Int) = MirrorStateStore.controllersChanged()
+        override fun onInputDeviceChanged(deviceId: Int) = Unit
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +59,7 @@ class InputMirrorSupervisorService : Service() {
             .onFailure { Log.w(TAG, "Could not enter the foreground", it) }
         // Docking adds a display: tick now rather than at the end of an 8s idle sleep.
         getSystemService(DisplayManager::class.java)?.registerDisplayListener(displayWake, null)
+        getSystemService(InputManager::class.java)?.registerInputDeviceListener(padWake, null)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,6 +72,7 @@ class InputMirrorSupervisorService : Service() {
 
     override fun onDestroy() {
         getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayWake)
+        getSystemService(InputManager::class.java)?.unregisterInputDeviceListener(padWake)
         running = false
         motion.serve(false)
         worker?.interrupt()
@@ -131,6 +142,10 @@ class InputMirrorSupervisorService : Service() {
         while (running) {
             try {
                 val now = System.currentTimeMillis()
+                // A start that failed is usually a pad caught mid-connect; once the pads have changed
+                // it deserves another go now, not a minute later. The restart throttle still spaces
+                // attempts, so the mirror's own hide/unhide churn cannot turn this into a loop.
+                if (MirrorStateStore.consumeControllersChanged()) nextStartRetryAllowedAt = 0L
                 val settings = graph.settingsRepository.getSettings()
                 val dockActive = graph.dockStateRepository.isDockActive()
                 val mirrorAllowed = dockActive || settings.mirrorWhenHandheld
@@ -328,7 +343,9 @@ class InputMirrorSupervisorService : Service() {
         // A pad the bundled database knows starts life already mapped; a pad the user has touched is
         // left exactly as they saved it.
         graph.seedDefaultMapping(key)
-        return graph.mappingRepository.get(key)
+        // "Select + Start is Back" is applied here, on the way to the daemon, not saved with the pad.
+        val selectStartBack = graph.settingsRepository.getSettings().selectStartBack
+        return graph.mappingRepository.get(key).withSelectStartBack(selectStartBack)
     }
 
     private fun startMirror(request: MirrorStartRequest): Boolean {
@@ -404,7 +421,7 @@ class InputMirrorSupervisorService : Service() {
         WaitingForInternalController("Waiting for built-in controller"),
         WaitingForExternalController("Waiting for external controller"),
         PickingPlayer1("Press L + R on the controller you want to use"),
-        TestingPad("Paused for controller tests"),
+        TestingPad("Paused for the controller tester"),
         Starting("Starting mirroring"),
         Active("Controller mirroring enabled"),
         Restarting("Restarting mirroring"),
