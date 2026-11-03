@@ -45,6 +45,11 @@ app, retargeted to the AYN Thor and renamed Control Switch.
 
 </div>
 
+## New in 0.7.3
+
+- **Steadier retries**: when mirroring can't start, the app now waits a minute before trying again
+  instead of hiding and showing your pad every 10 seconds. A newly connected pad still retries at once
+
 ## New in 0.7.2
 
 - **Change Controller** works like the Switch's screen: press L + R on a pad to make it player 1
