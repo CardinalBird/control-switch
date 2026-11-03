@@ -28,6 +28,22 @@ fun List<ControllerDevice>.pickExternal(
     return externals.firstOrNull()
 }
 
+/**
+ * External pads in the order to show them, each with its player number: the mirrored pad first as
+ * player 1, then the rest as 2, 3, 4 in Android's own order. With nothing mirrored the rest still
+ * start at 2, since player 1 is then the handheld itself.
+ *
+ * Numbered here rather than taken from Android, whose numbers count the handheld's built-in pad too:
+ * a second pad read as player 3 until the mirror hid one node and Android renumbered the rest. These
+ * are the numbers a game sees once mirroring runs, and they do not jump when it starts.
+ */
+fun List<ControllerDevice>.playerOrder(mirroredPath: String?): List<Pair<ControllerDevice, Int>> {
+    val externals = filter { !it.isInternal }
+    val mirrored = externals.firstOrNull { mirroredPath != null && it.path == mirroredPath }
+    val rest = externals.filter { it !== mirrored }.sortedBy { it.controllerNumber }
+    return listOfNotNull(mirrored).map { it to 1 } + rest.mapIndexed { i, pad -> pad to i + 2 }
+}
+
 private fun ControllerDevice.isSamePhysicalControllerAs(other: ControllerDevice): Boolean =
     controllerNumber > 0 && controllerNumber == other.controllerNumber
 

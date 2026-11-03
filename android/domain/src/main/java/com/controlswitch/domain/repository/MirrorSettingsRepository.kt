@@ -12,6 +12,9 @@ interface MirrorSettingsRepository {
     fun setHomeMode(mode: HomeButtonMode)
     fun setComboHoldKillAppEnabled(enabled: Boolean)
 
+    /** "Select + Start is Back". A live option: the mirror adopts it without a restart. */
+    fun setSelectStartBack(enabled: Boolean) {}
+
     fun setRumbleStrength(percent: Int)
     fun setAutoMirrorEnabled(enabled: Boolean)
     fun setMirrorWhenHandheld(enabled: Boolean)

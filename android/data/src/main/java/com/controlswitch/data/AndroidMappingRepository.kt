@@ -34,11 +34,28 @@ internal class AndroidMappingRepository(context: Context) : MappingRepository {
         }.apply()
     }
 
-    override fun layout(key: MappingKey): PadLayout =
-        PadLayout.entries.firstOrNull { it.name == prefs.getString(layoutKeyOf(key), null) } ?: PadLayout.XBOX
+    override fun storedLayout(key: MappingKey): PadLayout? =
+        PadLayout.entries.firstOrNull { it.name == prefs.getString(layoutKeyOf(key), null) }
 
     override fun setLayout(key: MappingKey, layout: PadLayout) {
         prefs.edit().putString(layoutKeyOf(key), layout.name).apply()
+    }
+
+    override fun customMapping(key: MappingKey): ControllerMapping? =
+        prefs.getString(customKeyOf(key), null)?.let(::parseMapping)?.takeIf { !it.isEmpty }
+
+    override fun saveCustomMapping(key: MappingKey, mapping: ControllerMapping) {
+        if (mapping.isEmpty) return
+        prefs.edit().putString(customKeyOf(key), mapping.serialize()).apply()
+    }
+
+    // Nintendo until the user picks another: the Thor is a Nintendo-layout handheld, so a new pad
+    // should answer to the letters its games show.
+    override fun player1Layout(): PadLayout? =
+        PadLayout.entries.firstOrNull { it.name == prefs.getString(PLAYER1_LAYOUT, null) } ?: PadLayout.NINTENDO
+
+    override fun setPlayer1Layout(layout: PadLayout) {
+        prefs.edit().putString(PLAYER1_LAYOUT, layout.name).apply()
     }
 
     // Namespaced so a controller's mapping can never collide with the mirror's own settings, which
@@ -48,4 +65,11 @@ internal class AndroidMappingRepository(context: Context) : MappingRepository {
     private fun layoutKeyOf(key: MappingKey) = "${KEY_MAPPING_PREFIX}layout_${key.value}"
 
     private fun seededKeyOf(key: MappingKey) = "${KEY_MAPPING_PREFIX}seeded_${key.value}"
+
+    private fun customKeyOf(key: MappingKey) = "${KEY_MAPPING_PREFIX}custom_${key.value}"
+
+    private companion object {
+        // Under the mapping prefix like the rest, but not shaped like a key: no pad's id is this.
+        const val PLAYER1_LAYOUT = "${KEY_MAPPING_PREFIX}player1_layout"
+    }
 }

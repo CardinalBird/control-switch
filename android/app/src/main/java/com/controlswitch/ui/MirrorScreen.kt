@@ -18,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.draw.clip
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -69,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.controlswitch.MainActivity
 import com.controlswitch.R
 import com.controlswitch.domain.model.lockedPlayer1
+import com.controlswitch.domain.model.playerOrder
 import com.controlswitch.ui.theme.Palette
 import kotlinx.coroutines.delay
 
@@ -141,10 +144,12 @@ fun MirrorScreen(viewModel: MirrorViewModel) {
     AnimatedContent(
         targetState = page,
         modifier = Modifier.fillMaxSize().background(Palette.screen),
+        // The leaving page clears out before the arriving one shows: fading both at once laid two
+        // headers and two footers over each other for a moment, which read as text glitching.
         transitionSpec = {
             val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-            (slideInHorizontally(tween(PAGE_MS)) { dir * it / 8 } + fadeIn(tween(PAGE_MS))) togetherWith
-                (slideOutHorizontally(tween(PAGE_MS)) { -dir * it / 8 } + fadeOut(tween(PAGE_MS / 2)))
+            (slideInHorizontally(tween(PAGE_MS)) { dir * it / 8 } + fadeIn(tween(PAGE_MS - PAGE_OUT_MS, delayMillis = PAGE_OUT_MS))) togetherWith
+                (slideOutHorizontally(tween(PAGE_MS)) { -dir * it / 8 } + fadeOut(tween(PAGE_OUT_MS)))
         },
         label = "page",
     ) { shown ->
@@ -163,8 +168,6 @@ fun MirrorScreen(viewModel: MirrorViewModel) {
             )
             Page.Player1 -> Player1Screen(
                 externals = state.devices.filter { !it.isInternal },
-                player1Name = state.player1Name,
-                player1Path = state.player1Path,
                 pendingName = state.pendingPlayer1Name,
                 pendingPath = state.pendingPlayer1Path,
                 levels = state.padLevels,
@@ -195,6 +198,7 @@ fun MirrorScreen(viewModel: MirrorViewModel) {
 }
 
 private const val PAGE_MS = 220
+private const val PAGE_OUT_MS = 80
 
 @Composable
 private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: Boolean, onOpenSettings: () -> Unit) {
@@ -268,11 +272,21 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
         if (active && !screenHasFocus) anchorFocus()
     }
 
+    // B here is the one that closes the app, and it is the same B that means "back" on every other
+    // page: one press too many, coming back from a page, closed it. The first B only says what a
+    // second would do; the handler stands aside while that offer is up, so the second reaches
+    // Android's own Back.
+    var exitArmed by remember { mutableStateOf<BannerMessage?>(null) }
+    BackHandler(enabled = active && exitArmed == null && !pickerOpen) {
+        exitArmed = BannerMessage("Press B again to close Control Switch.", done = false)
+    }
+
     val externals = state.devices.filter { !it.isInternal }
     val lockedPad = externals.lockedPlayer1(state.player1Name, state.player1Path)
     // Batteries are binder calls; read again only when the snapshot moves, not every recomposition.
     val systemBattery = remember(state.devices, state.enabled) { handheldBattery(context) }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -299,7 +313,7 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
                         hint = when {
                             state.autoMirrorEnabled || state.busy -> null
                             state.hasKnownInternalProfile -> "Auto-detected"
-                            else -> "Press to change built-in controller"
+                            else -> "Press A to change the built-in controller"
                         },
                         onClick = if (state.busy || state.autoMirrorEnabled) null else ({ pickerOpen = true }),
                     )
@@ -309,15 +323,15 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
                     SectionLabel("Controllers")
                     val missing = state.player1Name?.takeIf { lockedPad == null }
                     when {
-                        missing != null -> Note("$missing isn't connected. Change Input Order to pick another.")
+                        missing != null -> Note("$missing isn't connected. Change Controller to pick another.")
                         externals.isEmpty() -> Note("Connect a controller to mirror it.")
                     }
                     if (externals.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth()) {
-                            externals.take(4).forEach { pad ->
+                            externals.playerOrder(state.externalDevice?.path).take(4).forEach { (pad, player) ->
                                 PadTile(
                                     device = pad,
-                                    player1 = pad.path == state.externalDevice?.path,
+                                    player = player,
                                     levels = state.padLevels,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -337,7 +351,7 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
                 verticalArrangement = Arrangement.Center,
             ) {
                 MenuRow(
-                    title = "Change Input Order",
+                    title = "Change Controller",
                     onClick = if (state.busy) null else viewModel::openPlayer1Picker,
                     modifier = Modifier.focusRequester(topFocus),
                 )
@@ -360,12 +374,14 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
 
         Footer(
             status = when {
-                state.loading -> "Scanning controllers..."
-                state.restartWaiting -> "Waiting for mirroring to start..."
+                state.loading -> "Scanning controllers…"
+                state.restartWaiting -> "Waiting for mirroring to start…"
                 else -> state.message
             },
-            hints = listOf(HintAction(SlotIcon.B, "Back", null), HintAction(SlotIcon.A, "OK", null)),
+            hints = listOf(HintAction(SlotIcon.B, "Close", null), HintAction(SlotIcon.A, "OK", null)),
         )
+    }
+    Banner(exitArmed, onDone = { exitArmed = null }, Modifier.padding(top = 64.dp))
     }
 
     if (pickerOpen) {
@@ -373,7 +389,7 @@ private fun MainPage(state: MirrorUiState, viewModel: MirrorViewModel, active: B
             // Drop whatever is currently acting as the external pad: this list answers "which one is
             // built into the handheld?", and the mirror source is never that. Matching on path keeps
             // a placeholder external (resolved from saved identity, absent from the list) from
-            // filtering anything out. "Automatic (detect)" stays available to undo a wrong pick.
+            // filtering anything out. "Automatic" stays available to undo a wrong pick.
             devices = state.devices.filter { it.path != state.externalDevice?.path },
             selectedGuid = state.manualInternalGuid,
             onSelect = { guid ->
@@ -446,8 +462,15 @@ private fun StartingGuard(starting: Boolean) {
         }
     }
     val shape = RoundedCornerShape(14.dp)
+    // Presses are held off from the first frame (above); the card itself waits a quarter second and
+    // fades in, so a start that is over almost at once doesn't blink a dialog across the page.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(GUARD_SHOW_DELAY_MS)
+        appear.animateTo(1f, tween(200))
+    }
     Box(
-        Modifier.fillMaxSize().background(Palette.scrim)
+        Modifier.fillMaxSize().graphicsLayer { alpha = appear.value }.background(Palette.scrim)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { },
         contentAlignment = Alignment.Center,
     ) {
@@ -469,3 +492,4 @@ private fun StartingGuard(starting: Boolean) {
 }
 
 private const val STARTING_GUARD_MS = 15_000L
+private const val GUARD_SHOW_DELAY_MS = 250L

@@ -49,6 +49,7 @@ internal const val KEY_HOME_MODE = "home_mode"
 internal const val KEY_PLAYER1_NAME = "player1_name"
 internal const val KEY_PLAYER1_PATH = "player1_path"
 internal const val KEY_COMBO_HOLD_KILL_APP = "combo_hold_kill_app"
+internal const val KEY_SELECT_START_BACK = "select_start_back"
 
 internal const val KEY_RUMBLE_STRENGTH = "rumble_strength"
 internal const val KEY_AUTO_MIRROR_ENABLED = "auto_mirror_enabled"

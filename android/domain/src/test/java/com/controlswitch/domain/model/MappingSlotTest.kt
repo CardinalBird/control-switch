@@ -143,7 +143,7 @@ class MappingSlotTest {
             assertEquals(ControlRef.half(0x09, 1), source(preset, "Right trigger"))
             assertEquals(ControlRef.half(0x11, -1), source(preset, "D-pad up"))
             assertEquals(ControlRef.half(0x05, -1), source(preset, "Right stick up"))
-            assertEquals(ControlRef.button(0x13b), source(preset, "Menu"))
+            assertEquals(ControlRef.button(0x13b), source(preset, "Start"))
             assertEquals(null, source(preset, "Home"))
             assertEquals(null, source(preset, "Back"))
             // Every slot but Home and Back, and no control driving two slots.

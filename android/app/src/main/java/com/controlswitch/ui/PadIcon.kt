@@ -17,7 +17,7 @@ import com.controlswitch.domain.model.SlotIcon
 import com.controlswitch.ui.theme.Palette
 
 /** Which console's icons [PadIcon] draws. MirrorScreen provides it from the pad's saved preset. */
-internal val LocalPadLayout = compositionLocalOf { PadLayout.XBOX }
+internal val LocalPadLayout = compositionLocalOf { PadLayout.NINTENDO }
 
 /**
  * Every button prompt in the app: Kenney Input Prompts 1.5 (CC0), white vectors tinted by the theme.
@@ -31,7 +31,7 @@ internal fun PadIcon(icon: SlotIcon, size: Dp = 28.dp, tint: Color = Palette.tex
         painterResource(padIconRes(icon, layout)),
         contentDescription = null,
         // Xbox A/B/X/Y keep their green/red/blue/yellow; everything else takes the theme's ink.
-        colorFilter = if (layout == PadLayout.XBOX && icon in XBOX_COLOURED) null else ColorFilter.tint(tint),
+        colorFilter = if (layout != PadLayout.NINTENDO && icon in XBOX_COLOURED) null else ColorFilter.tint(tint),
         modifier = Modifier.size(size),
     )
 }
@@ -40,7 +40,7 @@ private val XBOX_COLOURED = setOf(SlotIcon.A, SlotIcon.B, SlotIcon.X, SlotIcon.Y
 
 @DrawableRes
 internal fun padIconRes(icon: SlotIcon, layout: PadLayout): Int = when (layout) {
-    PadLayout.XBOX -> when (icon) {
+    PadLayout.XBOX, PadLayout.CUSTOM -> when (icon) {
         SlotIcon.A -> R.drawable.kp_xbox_button_a
         SlotIcon.B -> R.drawable.kp_xbox_button_b
         SlotIcon.X -> R.drawable.kp_xbox_button_x
@@ -67,6 +67,8 @@ internal fun padIconRes(icon: SlotIcon, layout: PadLayout): Int = when (layout) 
         SlotIcon.MENU -> R.drawable.kp_xbox_button_menu
         SlotIcon.HOME -> R.drawable.kp_xbox_guide
         SlotIcon.BACK -> R.drawable.kp_xbox_button_back
+        // Never shown for an Xbox pad (it has no Capture); the Switch glyph rather than a crash.
+        SlotIcon.CAPTURE -> R.drawable.kp_switch_button_capture
     }
     PadLayout.NINTENDO -> when (icon) {
         SlotIcon.A -> R.drawable.kp_switch_button_a
@@ -96,5 +98,6 @@ internal fun padIconRes(icon: SlotIcon, layout: PadLayout): Int = when (layout) 
         SlotIcon.HOME -> R.drawable.kp_switch_button_home
         // No Switch "back" icon in the pack; Minus is the brief's stand-in.
         SlotIcon.BACK -> R.drawable.kp_switch_button_minus
+        SlotIcon.CAPTURE -> R.drawable.kp_switch_button_capture
     }
 }

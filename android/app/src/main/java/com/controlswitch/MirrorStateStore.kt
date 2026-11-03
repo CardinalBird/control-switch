@@ -60,6 +60,18 @@ object MirrorStateStore {
         }
     }
 
+    // Set when a controller came or went since the supervisor last looked.
+    @Volatile
+    private var controllersChanged = false
+
+    /** A controller was added or removed: wake the supervisor, and let it retry a failed start. */
+    fun controllersChanged() {
+        controllersChanged = true
+        wake()
+    }
+
+    fun consumeControllersChanged(): Boolean = controllersChanged.also { controllersChanged = false }
+
     /** Cut the supervisor's sleep short: a setting changed, or a display came or went. */
     fun wake() {
         synchronized(tickMonitor) {

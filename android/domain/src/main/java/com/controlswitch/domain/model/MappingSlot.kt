@@ -28,6 +28,8 @@ enum class SlotIcon {
     VIEW, MENU,
     /** The handheld's own Home and Back actions, as targets for a pad button. */
     HOME, BACK,
+    /** A Nintendo pad's Capture button. Drawn and lit in Controller Tests only, never a slot. */
+    CAPTURE,
 }
 
 /**
@@ -211,10 +213,10 @@ fun mappingSlots(traits: TargetTraits): List<MappingSlot> {
     }
 
     labelled("BUTTON_SELECT", BTN_SELECT)?.let {
-        slots += MappingSlot("View", ControlRef.button(it), SlotIcon.VIEW)
+        slots += MappingSlot("Select", ControlRef.button(it), SlotIcon.VIEW)
     }
     labelled("BUTTON_START", BTN_START)?.let {
-        slots += MappingSlot("Menu", ControlRef.button(it), SlotIcon.MENU)
+        slots += MappingSlot("Start", ControlRef.button(it), SlotIcon.MENU)
     }
     labelled("BUTTON_THUMBL", BTN_THUMBL)?.let {
         slots += MappingSlot("Left stick click", ControlRef.button(it), SlotIcon.LEFT_STICK_CLICK)
@@ -328,8 +330,12 @@ private val AXIS_ICONS: Map<String, Pair<SlotIcon?, SlotIcon?>> = mapOf(
     "GAS" to (null to SlotIcon.RIGHT_TRIGGER),
 )
 
-/** Which way round a pad's face buttons are printed. */
-enum class PadLayout { XBOX, NINTENDO }
+/**
+ * Which layout a pad is on: the two presets, by which way round its face buttons are printed, or the
+ * user's own [CUSTOM] one, set up once with Guided setup and kept to switch back to. A custom layout
+ * is drawn with the Xbox prompts, Android's own naming for the buttons.
+ */
+enum class PadLayout { XBOX, NINTENDO, CUSTOM }
 
 /**
  * A whole mapping for a pad of this layout: every slot bound to the control that is printed with the

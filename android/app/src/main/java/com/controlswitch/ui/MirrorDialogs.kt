@@ -86,14 +86,14 @@ internal fun InternalControllerPicker(
                 .border(1.dp, Palette.border, RoundedCornerShape(14.dp))
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         ) {
-            Text("Select internal controller", color = Palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Choose the built-in controller", color = Palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(14.dp))
             Column(
                 modifier = Modifier
                     .heightIn(max = 280.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                PickerOption(name = "Automatic (detect)", selected = selectedGuid == null) { onSelect(null) }
+                PickerOption(name = "Automatic", selected = selectedGuid == null) { onSelect(null) }
                 if (devices.isEmpty()) {
                     Text(
                         "No controllers detected. Connect the built-in controller and try again.",

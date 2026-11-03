@@ -2,6 +2,8 @@ package com.controlswitch.ui
 
 import com.controlswitch.domain.model.HomeButtonMode
 import com.controlswitch.domain.model.KEY_HOME
+import com.controlswitch.domain.model.KEY_BACK
+import com.controlswitch.domain.model.SELECT_START_BACK
 import com.controlswitch.domain.model.TargetTraits
 import com.controlswitch.domain.model.Binding
 import com.controlswitch.domain.model.CaptureKind
@@ -15,6 +17,7 @@ import com.controlswitch.domain.model.MappingKey
 import com.controlswitch.domain.model.MirrorSettings
 import com.controlswitch.domain.model.MirrorStartRequest
 import com.controlswitch.domain.model.PadLayout
+import com.controlswitch.domain.model.sourceIcon
 import com.controlswitch.domain.model.SlotIcon
 import com.controlswitch.domain.model.mappingSlots
 import com.controlswitch.domain.model.odinFallbackTraits
@@ -217,6 +220,21 @@ class MappingEditorControllerTest {
     }
 
     @Test
+    fun `the walk never asks for Back`() {
+        val controller = controllerWith(process = FakeProcessRepository(daemonRunning = false))
+        controller.openAndAwait()
+
+        controller.mapAll()
+        val asked = mutableListOf<SlotIcon>()
+        repeat(slots.size) {
+            controller.state.value.capturing?.let { asked += it.icon }
+            controller.cancelBind()
+        }
+        assertEquals(null, controller.state.value.walk)
+        assertEquals(slots.map { it.icon }.filter { it != SlotIcon.BACK }, asked)
+    }
+
+    @Test
     fun `a preset replaces the whole mapping and is saved as the user's`() {
         val mappings = FakeMappingRepository(
             stored = ControllerMapping(listOf(Binding(ControlRef.button(400), slots[0].target))),
@@ -233,6 +251,171 @@ class MappingEditorControllerTest {
         // Everything but Home and Back, which a preset leaves alone (when the target offers them at all).
         val bindable = slots.count { it.icon != SlotIcon.HOME && it.icon != SlotIcon.BACK }
         assertEquals(bindable, mappings.saved?.bindings?.size)
+    }
+
+    @Test
+    fun `a trigger reported as both its axis and its button is one press`() {
+        // The handheld's republished pad: one pull of RT arrives as BTN_TR2 and as the GAS axis.
+        val tracker = ChordTracker { a, b -> sourceIcon(a) == sourceIcon(b) }
+        val button = ControlRef.button(0x139)
+        val axis = ControlRef.half(0x09, 1)
+        tracker.edge(button, true)
+        tracker.edge(axis, true)
+        assertEquals("the pull was counted twice", listOf(axis), tracker.gathered)
+        assertEquals(null, tracker.edge(button, false))
+        assertEquals("letting go did not finish the capture", listOf(axis), tracker.edge(axis, false))
+    }
+
+    @Test
+    fun `a layout switch is saved, pushed and finished at once`() {
+        val mappings = FakeMappingRepository()
+        val settings = FakeSettingsRepository()
+        var woken = false
+        val controller = MappingEditorController(
+            mappings = mappings, devices = FakeDeviceRepository(), process = FakeProcessRepository(daemonRunning = false),
+            settings = settings, seedDefaultMapping = {}, scope = scope, wakeSupervisor = { woken = true },
+        )
+        controller.openAndAwait()
+
+        controller.switchLayout(PadLayout.NINTENDO)
+        assertEquals(PadLayout.NINTENDO, controller.state.value.switchingTo)
+        awaitUntil("the switch never finished") { controller.state.value.switchingTo == null }
+        assertEquals(ControlRef.button(BTN_EAST), mappings.saved?.bindings?.first { it.target == slots[0].target }?.source)
+        assertEquals(true, settings.bumps > 0 && woken)
+    }
+
+    @Test
+    fun `the first Custom starts Guided setup and keeps what it binds`() {
+        val mappings = FakeMappingRepository()
+        val controller = controllerWith(mappings = mappings, process = FakeProcessRepository(daemonRunning = false))
+        controller.openAndAwait()
+
+        controller.switchLayout(PadLayout.CUSTOM)
+        assertEquals(PadLayout.CUSTOM, controller.state.value.layout)
+        assertEquals("Guided setup did not start", slots[0], controller.state.value.capturing)
+        controller.tap(ControlRef.button(BTN_SOUTH))
+        controller.stopWalk()
+
+        awaitUntil("the custom layout was never kept") { mappings.custom != null }
+        assertEquals(ControlRef.button(BTN_SOUTH), mappings.custom?.bindings?.first { it.target == slots[0].target }?.source)
+        assertEquals(1, controller.state.value.customJustSaved)
+        assertEquals(true, controller.state.value.hasCustom)
+    }
+
+    @Test
+    fun `Custom brings back the saved custom layout`() {
+        val mine = Binding(ControlRef.button(400), slots[0].target)
+        val mappings = FakeMappingRepository().apply { custom = ControllerMapping(listOf(mine)) }
+        val controller = controllerWith(mappings = mappings, process = FakeProcessRepository(daemonRunning = false))
+        controller.openAndAwait()
+
+        controller.switchLayout(PadLayout.CUSTOM)
+        assertEquals(ControlRef.button(400), controller.state.value.bindings[slots[0].target])
+        assertEquals("a saved custom layout started Guided setup again", null, controller.state.value.walk)
+        awaitUntil("the switch never finished") { controller.state.value.switchingTo == null && mappings.saved != null }
+        assertEquals(listOf(mine), mappings.saved?.bindings)
+    }
+
+    @Test
+    fun `switching to the layout already in force changes nothing`() {
+        val mappings = FakeMappingRepository()
+        val controller = controllerWith(mappings = mappings)
+        controller.openAndAwait()
+
+        controller.switchLayout(PadLayout.XBOX)
+        assertEquals(null, controller.state.value.switchingTo)
+        Thread.sleep(200)
+        assertEquals(null, mappings.saved)
+    }
+
+    private val withBack = odinFallbackTraits().let { it.copy(keys = it.keys + KEY_BACK) }
+
+    @Test
+    fun `binding Back to another button turns Select + Start as Back off`() {
+        val settings = FakeSettingsRepository()
+        val controller = controllerWith(
+            settings = settings, devices = FakeDeviceRepository(withBack), process = FakeProcessRepository(daemonRunning = false),
+        )
+        controller.openAndAwait()
+        val back = controller.state.value.slots.first { it.icon == SlotIcon.BACK }
+
+        controller.bind(back)
+        controller.tap(ControlRef.button(0x13c))
+        assertEquals(ControlRef.button(0x13c), controller.state.value.bindings[back.target])
+        assertEquals(false, controller.state.value.selectStartBack)
+        awaitUntil("the setting was never turned off") { settings.selectStartBack == false }
+    }
+
+    @Test
+    fun `binding Back to Select + Start turns the setting on instead of saving a copy`() {
+        val settings = FakeSettingsRepository()
+        val controller = controllerWith(
+            settings = settings, devices = FakeDeviceRepository(withBack), process = FakeProcessRepository(daemonRunning = false),
+        )
+        controller.openAndAwait()
+        val back = controller.state.value.slots.first { it.icon == SlotIcon.BACK }
+        val select = ControlRef.button(0x13a)
+        val start = ControlRef.button(0x13b)
+        // Turned off first, by binding Back elsewhere, so there is something to turn back on.
+        controller.bind(back)
+        controller.tap(ControlRef.button(0x13c))
+
+        controller.bind(back)
+        controller.captured(select, true)
+        controller.captured(start, true)
+        controller.captured(start, false)
+        controller.captured(select, false)
+        assertEquals(null, controller.state.value.chords[back.target])
+        assertEquals(null, controller.state.value.bindings[back.target])
+        assertEquals(true, controller.state.value.selectStartBack)
+        awaitUntil("the setting was never turned on") { settings.selectStartBack == true }
+    }
+
+    @Test
+    fun `a saved Select + Start Back is left to the setting when the editor opens`() {
+        val mappings = FakeMappingRepository(
+            stored = ControllerMapping(chords = listOf(SELECT_START_BACK)),
+        )
+        val controller = controllerWith(mappings = mappings, devices = FakeDeviceRepository(withBack))
+        controller.openAndAwait()
+        assertEquals(emptyMap<ControlRef, List<ControlRef>>(), controller.state.value.chords)
+    }
+
+    @Test
+    fun `a preset becomes player 1's layout`() {
+        val mappings = FakeMappingRepository()
+        val controller = controllerWith(mappings = mappings)
+        controller.openAndAwait()
+
+        controller.autoMap(PadLayout.NINTENDO)
+        awaitUntil("player 1's layout was never saved") { mappings.slotLayout == PadLayout.NINTENDO }
+    }
+
+    @Test
+    fun `a new player 1 takes player 1's layout, saved and pushed at once`() {
+        val mappings = FakeMappingRepository().apply { slotLayout = PadLayout.NINTENDO }
+        val settings = FakeSettingsRepository()
+        val controller = controllerWith(mappings = mappings, settings = settings)
+
+        controller.followPlayer1Layout(MappingKey("057e:2009"))
+        awaitUntil("the layout was never applied") { mappings.saved != null }
+        assertEquals(PadLayout.NINTENDO, mappings.layout)
+        // The Nintendo preset: the A slot is driven by the pad's east button.
+        assertEquals(ControlRef.button(BTN_EAST), mappings.saved?.bindings?.first { it.target == slots[0].target }?.source)
+        awaitUntil("the daemon was never told") { settings.bumps > 0 }
+    }
+
+    @Test
+    fun `a pad already in player 1's layout is left as it is`() {
+        val mappings = FakeMappingRepository().apply {
+            slotLayout = PadLayout.XBOX
+            layout = PadLayout.XBOX
+        }
+        val controller = controllerWith(mappings = mappings)
+
+        controller.followPlayer1Layout(MappingKey("045e:02fd"))
+        Thread.sleep(200)
+        assertEquals("a pad's own mapping was overwritten", null, mappings.saved)
     }
 
     @Test
@@ -424,7 +607,7 @@ class MappingEditorControllerTest {
 
     private fun MappingEditorController.openAndAwait() {
         open("Test pad", MappingKey("045e:028e"))
-        awaitUntil("the editor never opened") { state.value.open }
+        awaitUntil("the editor never opened") { state.value.open && !state.value.loading }
     }
 
     private fun awaitUntil(message: String, condition: () -> Boolean) {
@@ -462,8 +645,28 @@ class MappingEditorControllerTest {
 
         override fun layout(key: MappingKey) = layout
 
+        override fun storedLayout(key: MappingKey) = layout
+
         override fun setLayout(key: MappingKey, layout: PadLayout) {
             this.layout = layout
+        }
+
+        @Volatile
+        var slotLayout: PadLayout? = null
+
+        override fun player1Layout() = slotLayout
+
+        override fun setPlayer1Layout(layout: PadLayout) {
+            slotLayout = layout
+        }
+
+        @Volatile
+        var custom: ControllerMapping? = null
+
+        override fun customMapping(key: MappingKey) = custom
+
+        override fun saveCustomMapping(key: MappingKey, mapping: ControllerMapping) {
+            custom = mapping
         }
     }
 
@@ -485,6 +688,13 @@ class MappingEditorControllerTest {
         override fun setManualInternalController(guid: String?) = Unit
         override fun bumpConfigGeneration() {
             bumps++
+        }
+
+        @Volatile
+        var selectStartBack: Boolean? = null
+
+        override fun setSelectStartBack(enabled: Boolean) {
+            selectStartBack = enabled
         }
     }
 

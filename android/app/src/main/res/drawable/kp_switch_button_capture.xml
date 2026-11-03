@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Capture: a rounded square with a round hole, drawn in the Kenney prompts' style (no Capture art
+     in the pack). One colour, white, tinted by the caller like the other prompts. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="64dp"
+    android:viewportWidth="64" android:viewportHeight="64">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M19,11 H45 A8,8 0 0 1 53,19 V45 A8,8 0 0 1 45,53 H19 A8,8 0 0 1 11,45 V19 A8,8 0 0 1 19,11 Z M32,22 A10,10 0 1 0 32,42 A10,10 0 1 0 32,22 Z" />
+</vector>

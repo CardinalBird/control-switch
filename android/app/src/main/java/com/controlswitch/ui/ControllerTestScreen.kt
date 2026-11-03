@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.input.InputMode
@@ -68,11 +70,12 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * Controller Tests: pick a pad, then press everything and watch the drawing light up while the
- * checklist ticks itself off. The mirror is held off for as long as this page is open, so the pad
- * under test reports as itself rather than as the built-in one. Two steps: on the picker the pad
- * drives the page as usual; while testing, every event from the chosen pad is taken by the page
- * (its B included, which is why holding the button printed B is the way out).
+ * Controller Tester: pick a pad, then press everything and watch the drawing light up while the
+ * checklist ticks itself off. Player 1 is tested through the running mirror by default, as games see
+ * it, each press rumbling it; X pauses mirroring to test the pad raw, and mirroring resumes when that
+ * test ends. Two steps: on the picker the pad drives the page as usual; while testing, every event
+ * from the chosen pad is taken by the page (its B included, which is why holding the button printed
+ * B is the way out).
  */
 @Composable
 internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack: () -> Unit) {
@@ -100,8 +103,25 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     var motionBuiltIn by remember { mutableStateOf(false) }
     var motionLabel by remember { mutableStateOf("") }
     var motionTest by remember { mutableStateOf(MotionTest()) }
-    val builtIn = pad != null && pad.name.equals(internalName, ignoreCase = true)
-    val holdWanted = !(motion && !motionBuiltIn) && !mirrored
+    // Mirroring runs on, by default: the pad is tested as player 1, through the mirror, as games see
+    // it. Pausing it (X) is the exception, for testing a pad raw; holding it off whenever this page
+    // was open meant every visit stopped and restarted the mirror, and while it was stopped the pad
+    // reported its own Xbox buttons instead of the layout the user had picked.
+    var paused by remember { mutableStateOf(false) }
+    // Set by X until the mirror has stood down, then the pad is tested raw.
+    var pausedPending by remember { mutableStateOf(false) }
+    // While mirroring, the handheld's own device carries player 1's pad: it is listed as player 1.
+    val playerOneLive = !paused && state.enabled && state.externalDevice != null
+    // The saved player 1 by name: known from the first frame, where the resolved device can still be
+    // the main screen's "Waiting for external controller" placeholder just after launch.
+    val playerOneName = state.player1Name ?: state.externalDevice?.name ?: "through the mirror"
+    fun InputDevice.isInternal() = isHandheldPad(internalName)
+    // The handheld itself, as opposed to the device carrying player 1's pad.
+    val builtIn = pad != null && pad.isInternal() && !playerOneLive
+    // A pad tested on its own device while the mirror runs takes only that device's events: player
+    // 1's presses arrive through the handheld's device and must not light its drawing.
+    var onlyDevice by remember { mutableIntStateOf(-1) }
+    val holdWanted = paused && !(motion && !motionBuiltIn)
     LifecycleStartEffect(holdWanted) {
         MirrorStateStore.setTestingPad(holdWanted)
         onStopOrDispose { MirrorStateStore.setTestingPad(false) }
@@ -123,51 +143,85 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
         }
     }
     val layout = if (builtIn) PadLayout.NINTENDO else state.padLayout
-    // The mirror is still being stood down: until it is, an external pad's presses arrive as the
-    // built-in one, so there is nothing to test yet.
-    val ready = !state.enabled && pad != null
+    // Paused, the mirror is still being stood down: until it is, an external pad's presses arrive as
+    // the built-in one, so there is nothing to test yet. Otherwise there is nothing to wait for.
+    val ready = pad != null && (!paused || !state.enabled)
 
+    // Ending a test or a paused run lets mirroring carry on, as it was before the page opened.
+    fun stopTest() {
+        test = test.copy(down = emptySet())
+        testingRaw = false
+        mirrored = false
+        paused = false
+        pausedPending = false
+        onlyDevice = -1
+    }
+
+    // Leaving takes two B presses: the test itself asks for B (and every other button) to be pressed,
+    // and one press too many on the picker closed the page.
+    var exitArmed by remember { mutableStateOf<BannerMessage?>(null) }
     BackHandler(enabled = active) {
         when {
-            testing || mirrored -> {
-                testingRaw = false
-                mirrored = false
-            }
+            testing || mirrored || paused -> stopTest()
             motion -> motion = false
+            exitArmed == null -> exitArmed = BannerMessage("Press B again to leave Controller Tester.", done = false)
             else -> onBack()
         }
     }
 
-    fun start() {
-        val chosen = pad ?: return
-        if (!ready) return
+    // A test on the pad's own device. With the mirror running that is a pad it isn't mirroring, so
+    // only that device's events count; with it off, every pad feeds (see isPad below).
+    fun start(chosen: InputDevice) {
         val axes = padAxes { chosen.getMotionRange(it) != null }
         test = PadTest(
-            items = padItems(hasKey = { chosen.hasKeys(it)[0] }, hasAxis = { chosen.getMotionRange(it) != null }, axes = axes, builtIn = builtIn),
+            items = padItems(
+                hasKey = { chosen.hasKeys(it)[0] }, hasAxis = { chosen.getMotionRange(it) != null }, axes = axes,
+                builtIn = chosen.isInternal(),
+            ),
         )
+        onlyDevice = if (state.enabled && !paused && !chosen.isInternal()) chosen.id else -1
         padId = chosen.id
         testingRaw = true
     }
 
+    // Player 1 through the mirror: read from the handheld's device, which is what a game reads.
     fun startMirrored() {
-        // Nothing to mirror alone: the handheld's own pad is the target, another pad is the source.
-        if (!ready || pads.size < 2) return
-        val internal = pads.firstOrNull { it.name.equals(internalName, ignoreCase = true) } ?: return
+        val internal = pads.firstOrNull { it.isInternal() } ?: return
         val axes = padAxes { internal.getMotionRange(it) != null }
         test = PadTest(
             items = padItems(hasKey = { internal.hasKeys(it)[0] }, hasAxis = { internal.getMotionRange(it) != null }, axes = axes, builtIn = true),
         )
+        onlyDevice = -1
         padId = internal.id
         mirrored = true
         testingRaw = true
+    }
+
+    fun startDefault() {
+        val chosen = pad ?: return
+        if (!ready) return
+        if (playerOneLive && chosen.isInternal()) startMirrored() else start(chosen)
+    }
+
+    // X: pause mirroring and test player 1's pad raw, once it reappears as itself.
+    fun startPaused() {
+        paused = true
+        pausedPending = true
+    }
+    LaunchedEffect(pausedPending, state.enabled, pads) {
+        if (!pausedPending || state.enabled) return@LaunchedEffect
+        val raw = pads.firstOrNull { !it.isInternal() } ?: pads.firstOrNull() ?: return@LaunchedEffect
+        pausedPending = false
+        start(raw)
     }
 
     fun startMotion() {
         val chosen = pad ?: return
         if (!ready) return
         motionTest = MotionTest()
+        // Player 1's gyro comes from the mirror; only the handheld itself is read without it.
         motionBuiltIn = builtIn
-        motionLabel = padLabel(chosen, pads, internalName)
+        motionLabel = padLabel(chosen, pads, internalName, if (playerOneLive) playerOneName else null)
         motion = true
     }
 
@@ -178,23 +232,24 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
     fun InputDevice?.isPad() = this != null && !isVirtual &&
         (sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD || sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
     val activity = LocalContext.current.findMainActivity()
-    // Y on the picker starts the motion step, X the mirrored run. Taken at the activity rather than
+    // Y on the picker starts the motion step, X the test without mirroring. Taken at the activity rather than
     // through Compose focus, which is still being re-anchored right after a step ends; an unhandled
     // Y turns into Back and would close the page. Both halves are taken.
-    DisposableEffect(activity, testing, motion, mirrored, ready, pad?.id) {
+    DisposableEffect(activity, testing, motion, mirrored, ready, pad?.id, playerOneLive) {
         if (activity == null || testing || motion || mirrored) return@DisposableEffect onDispose { }
         activity.onPadCapture = { event: KeyEvent ->
             val x = event.keyCode == KeyEvent.KEYCODE_BUTTON_X
             (x || event.keyCode == KeyEvent.KEYCODE_BUTTON_Y).also { mine ->
                 if (mine && event.action == KeyEvent.ACTION_UP && event.repeatCount == 0) {
-                    if (x) startMirrored() else startMotion()
+                    if (x) { if (playerOneLive) startPaused() } else startMotion()
                 }
             }
         }
         onDispose { activity.onPadCapture = null }
     }
-    DisposableEffect(activity, testing, mirrored, pad?.id) {
-        if (activity == null || !testing || pad == null) return@DisposableEffect onDispose { }
+    DisposableEffect(activity, testing, mirrored, pad?.id, layout, onlyDevice) {
+        // `testing` already implies a pad.
+        if (activity == null || !testing) return@DisposableEffect onDispose { }
         val vibrator = if (mirrored) activity.getSystemService(Vibrator::class.java) else null
         val axes = padAxes { pad.getMotionRange(it) != null }
         val hasHat = pad.getMotionRange(MotionEvent.AXIS_HAT_X) != null
@@ -204,8 +259,11 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
             return if (range.range > 0f) ((value - range.min) / range.range).coerceIn(0f, 1f) else 0f
         }
         activity.onPadCapture = { event: KeyEvent ->
-            val icon = PAD_KEYS[event.keyCode]
-            (icon != null && event.device.isPad()).also { mine ->
+            // hid-nintendo reports Capture as BTN_Z, read as BUTTON_Z. Only a Nintendo pad means
+            // Capture by it: other layouts put other buttons on that code.
+            val icon = if (event.keyCode == KeyEvent.KEYCODE_BUTTON_Z) SlotIcon.CAPTURE.takeIf { layout == PadLayout.NINTENDO }
+            else PAD_KEYS[event.keyCode]
+            (icon != null && event.device.isPad() && (onlyDevice < 0 || event.deviceId == onlyDevice)).also { mine ->
                 if (mine && event.repeatCount == 0) {
                     val down = event.action == KeyEvent.ACTION_DOWN
                     test = test.button(icon!!, down)
@@ -214,7 +272,7 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
             }
         }
         activity.onPadMotion = { event: MotionEvent ->
-            (event.device.isPad() && event.isFromSource(InputDevice.SOURCE_JOYSTICK)).also { mine ->
+            (event.device.isPad() && event.isFromSource(InputDevice.SOURCE_JOYSTICK) && (onlyDevice < 0 || event.deviceId == onlyDevice)).also { mine ->
                 if (mine) {
                     var next = test
                         .stick(right = false, event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y))
@@ -241,9 +299,7 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
         if (!holding) return@LaunchedEffect
         hold.animateTo(1f, tween(HOLD_MS, easing = LinearEasing))
         // The releases land after the hooks are gone, so nothing would ever come back up.
-        test = test.copy(down = emptySet())
-        testingRaw = false
-        mirrored = false
+        stopTest()
     }
 
     // Same anchoring as Additional Settings, redone when the test ends and the row is back in charge.
@@ -264,33 +320,40 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
         if (pads.isNotEmpty() && pad != null) padId = pads[(pads.indexOf(pad) + by + pads.size) % pads.size].id
     }
     CompositionLocalProvider(LocalPadLayout provides layout) {
+        Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().onFocusChanged { hasFocus = it.hasFocus }.windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
-            Header(title = "Controller Tests")
+            Header(title = "Controller Tester")
             Rule(Modifier.padding(horizontal = 28.dp))
             Row(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 40.dp, vertical = 2.dp)) {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     MenuRow(
-                        title = "Controller",
+                        // "Player 1" while player 1 is picked, so the value is just the pad's name and fits.
+                        title = if (mirrored || (playerOneLive && pad?.isInternal() == true)) "Player 1" else "Controller",
                         minHeight = 44.dp,
                         // Mirroring may run during the motion step, so a pad's A would reach this row.
-                        onClick = if (motion || mirrored) null else ({ start() }),
+                        onClick = if (motion || mirrored) null else ({ startDefault() }),
                         onLeft = if (testing || motion || mirrored) null else ({ cycle(-1) }),
                         onRight = if (testing || motion || mirrored) null else ({ cycle(1) }),
                         modifier = Modifier.focusRequester(first),
                     ) {
-                        RowValue(
-                            when {
-                                pad == null -> "No controller connected"
-                                mirrored -> "Through the mirror"
-                                !ready && !motion -> "Pausing mirroring…"
-                                motion -> motionLabel
-                                testing -> padLabel(pad, pads, internalName)
-                                else -> "‹  ${padLabel(pad, pads, internalName)}  ›"
-                            },
-                            accent = ready && !testing && !motion,
-                        )
+                        val p1 = if (playerOneLive) playerOneName else null
+                        // Capped, so a long pad name shortens itself instead of squeezing the row's
+                        // title onto two lines.
+                        Box(Modifier.widthIn(max = ROW_VALUE_MAX)) {
+                            RowValue(
+                                when {
+                                    pad == null -> "No controller connected"
+                                    mirrored -> playerOneName
+                                    !ready && !motion -> "Pausing mirroring…"
+                                    motion -> motionLabel
+                                    testing -> padLabel(pad, pads, internalName, p1)
+                                    else -> "‹  ${padLabel(pad, pads, internalName, p1)}  ›"
+                                },
+                                accent = ready && !testing && !motion,
+                            )
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     Box(contentAlignment = Alignment.Center) {
@@ -310,25 +373,26 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
                         waiting -> "Starting mirroring…"
                         motionWaited && motionTest.samples == 0 -> "No motion data from this controller."
                         motionTest.samples == 0 -> "Connecting to the gyro…"
-                        motionBuiltIn -> "Reading this handheld's gyro. Tip it forward, twist it flat, roll it on its side."
-                        else -> "Reading the controller's gyro through the mirror. Tip it forward, twist it flat, roll it on its side."
+                        motionBuiltIn -> "Tip it forward, twist it flat, roll it sideways."
+                        else -> "Tip the controller forward, twist it flat, roll it sideways."
                     },
                     hints = listOf(HintAction(SlotIcon.B, "Done") { motion = false }),
                 )
             } else if (mirrored && !testing) {
                 Footer(
                     status = when {
-                        !state.autoMirrorEnabled -> "Mirroring is off: turn it on from the main screen first."
-                        !state.docked && !state.mirrorWhenHandheld -> "This needs mirroring: dock, or set Allow mirroring to Always."
+                        !state.autoMirrorEnabled -> "Mirroring is off. Turn it on from the main screen."
+                        !state.docked && !state.mirrorWhenHandheld -> "Needs mirroring: dock, or set Allow mirroring to Always."
                         else -> "Starting mirroring…"
                     },
-                    hints = listOf(HintAction(SlotIcon.B, "Cancel") { mirrored = false; testingRaw = false }),
+                    hints = listOf(HintAction(SlotIcon.B, "Cancel") { stopTest() }),
                 )
             } else if (testing) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (mirrored) "What games see through the mirror. Every press rumbles your controller."
-                        else "Press every button, pull both triggers and turn each stick in a full circle.",
+                        if (mirrored) "Press everything. Each press rumbles the controller."
+                        else if (paused) "Mirroring paused. Press every button, pull both triggers."
+                        else "Press every button, pull both triggers, circle both sticks.",
                         color = Palette.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(start = 28.dp).weight(1f),
                     )
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { HoldHint(hold.value) }
@@ -336,28 +400,35 @@ internal fun ControllerTestScreen(state: MirrorUiState, active: Boolean, onBack:
             } else {
                 Footer(
                     status = when {
-                        !ready -> "Waiting for the mirror to pause."
-                        // With another pad connected the handheld's presses come through that pad, so
-                        // the two can't be told apart.
-                        builtIn && pads.size > 1 -> "Turn off other controllers to test this handheld alone."
-                        pads.size > 1 -> "A tests the buttons, Y the motion. X tests through the mirror, as games see it."
-                        else -> "Choose a controller: A tests the buttons, Y the motion."
+                        !ready || pausedPending -> "Pausing mirroring…"
+                        playerOneLive -> "Tests run through the mirror."
+                        !state.enabled -> "Mirroring is off: controllers are tested directly."
+                        else -> "Pick a controller to test."
                     },
                     hints = listOfNotNull(
                         HintAction(SlotIcon.B, "Back", onBack),
-                        if (pads.size > 1) HintAction(SlotIcon.X, "Mirrored") { startMirrored() } else null,
                         HintAction(SlotIcon.Y, "Motion") { startMotion() },
-                        HintAction(SlotIcon.A, "Buttons", null),
+                        if (playerOneLive) HintAction(SlotIcon.X, "No mirror") { startPaused() } else null,
+                        HintAction(SlotIcon.A, "Test", null),
                     ),
                 )
             }
+        }
+        Banner(exitArmed, onDone = { exitArmed = null }, Modifier.padding(top = 64.dp))
         }
     }
 }
 
 private const val HOLD_MS = 1500
-/** The buzz per press on a mirrored run: short enough that fast presses stay distinct. */
-private const val BUZZ_MS = 60L
+private val ROW_VALUE_MAX = 300.dp
+/**
+ * The buzz per press on a mirrored run. 60 ms never reached the pad: the mirror keeps only the latest
+ * of the on/off states it reads from the vibrator in one go, and a buzz that short often came back as
+ * "on" and "off" together, so only "off" was played; even caught, it was gone before a Bluetooth
+ * rumble command could land. 180 ms arrives as its own "on" and is felt, and still keeps up with quick
+ * presses.
+ */
+private const val BUZZ_MS = 180L
 
 /**
  * One buzz, filed as media like a game's rumble is. Left unlabelled, Android files a short buzz as
@@ -376,14 +447,26 @@ private fun Vibrator.buzz() {
 
 
 
+/**
+ * Whether this is the handheld's own pad: the name the main screen resolved for it, or the Thor's
+ * built-in "Odin Controller" (2020:0111) itself. The name alone failed just after launch, before the
+ * built-in pad was resolved, and the handheld was then offered as a separate pad under its raw device
+ * name. The firmware's twin of an external pad shares the ids but not the name.
+ */
+private fun InputDevice.isHandheldPad(internalName: String?): Boolean =
+    name.equals(internalName, ignoreCase = true) ||
+        (vendorId == 0x2020 && productId == 0x0111 && name.startsWith("Odin", ignoreCase = true))
+
 /** The real game controllers Android lists right now, the handheld's own first. */
 private fun connectedPads(internalName: String?): List<InputDevice> =
     InputDevice.getDeviceIds().toList().mapNotNull(InputDevice::getDevice)
         .filter { !it.isVirtual && (it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD || it.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK) }
-        .sortedBy { !it.name.equals(internalName, ignoreCase = true) }
+        .sortedBy { !it.isHandheldPad(internalName) }
 
-private fun padLabel(pad: InputDevice, pads: List<InputDevice>, internalName: String?): String = when {
-    pad.name.equals(internalName, ignoreCase = true) -> "This handheld"
+/** [playerOne] names the mirrored pad while the handheld's device carries it. */
+private fun padLabel(pad: InputDevice, pads: List<InputDevice>, internalName: String?, playerOne: String? = null): String = when {
+    pad.isHandheldPad(internalName) && playerOne != null -> playerOne
+    pad.isHandheldPad(internalName) -> "This handheld"
     // Two pads of one model share a name; the player number tells them apart.
     pads.count { it.name == pad.name } > 1 -> "${pad.name} (P${pad.controllerNumber})"
     else -> pad.name
@@ -486,7 +569,16 @@ private fun Checklist(test: PadTest, layout: PadLayout, modifier: Modifier = Mod
 // controls drawn into its cut-outs. Coordinates are the icon's own 64-unit grid, so a spot from
 // the SVG is a spot here; [S] is dp per unit and the shoulders sit in a band above the body.
 private const val S = 5.5f
-private const val SHOULDERS = 22f
+private const val SHOULDERS = 40f
+// Shoulder band, in dp: on each side an upright capsule (ZL/ZR) stacked over a short pill (L/R),
+// centred on one line above the grip, clear of the body.
+private const val CAP_W = 14f
+private const val CAP_H = 24f
+private const val PILL_W = 24f
+private const val PILL_H = 8f
+private const val PILL_TOP = CAP_H + 4f
+/** The stacks' centre line, on the grid; the right one mirrors it. */
+private const val STACK_X = 17f
 private const val PAD_LEFT = 8f
 private const val PAD_TOP = 14.6f
 private const val W = 48f * S
@@ -501,6 +593,9 @@ private data class Spot(val x: Float, val y: Float) {
     val dy: Float get() = (y - PAD_TOP) * S + SHOULDERS
 }
 
+/** A spot in the shoulder band: [x] on the grid, [b] dp down from the top of the drawing. */
+private fun band(x: Float, b: Float) = Spot(x, PAD_TOP + (b - SHOULDERS) / S)
+
 // The silhouette's cut-outs.
 private val SOUTH = Spot(45f, 28f)
 private val EAST = Spot(49f, 25f)
@@ -510,10 +605,12 @@ private val LEFT_STICK = Spot(19f, 24f)
 private val RIGHT_STICK = Spot(38f, 32f)
 private val DPAD = Spot(25f, 32f)
 // Not in the silhouette, placed where the Pro has them: − and + flanking the top, Capture under −,
-// Home under +.
+// Home under +. An Xbox pad's Guide sits top centre, between View and Menu.
 private val MINUS = Spot(28f, 18.5f)
 private val PLUS = Spot(36f, 18.5f)
 private val HOME = Spot(36f, 23f)
+private val CAPTURE = Spot(28f, 23f)
+private val GUIDE = Spot(32f, 18.5f)
 private val READOUT_Y = 52.5f
 
 @Composable
@@ -535,6 +632,10 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
     val good = Palette.custom
     val tint = if (dim) Palette.textMuted else Palette.textPrimary
     val showHome = SlotIcon.HOME in test.items || (test.items.isEmpty() && !builtIn)
+    val home = if (nintendo) HOME else GUIDE
+    val homeR = if (nintendo) 1.6f else 1.9f
+    // Not on the checklist: it lights when it arrives, and many pads never send it.
+    val showCapture = nintendo && !builtIn
     val silhouette = remember { PathParser().parsePathString(PRO_PATH).toPath() }
 
     Box(Modifier.size(W.dp, H.dp)) {
@@ -545,21 +646,29 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
             fun passRing(icon: SlotIcon, center: Spot, radius: Float) {
                 if (test.passed(icon)) drawCircle(good, radius * u, center.px(), style = Stroke(2f * u))
             }
-            // Shoulders: a bar each for ZL/ZR (filling with the pull) and L/R, above the body.
+            // ZL/ZR: a capsule each that fills from the bottom with the pull. A trigger that only
+            // arrives as a press (a Switch pad's, through the handheld's twin) fills whole.
             for ((icon, x, value) in listOf(
-                Triple(SlotIcon.LEFT_TRIGGER, 12f, test.leftTrigger), Triple(SlotIcon.RIGHT_TRIGGER, 37f, test.rightTrigger),
+                Triple(SlotIcon.LEFT_TRIGGER, STACK_X, test.leftTrigger),
+                Triple(SlotIcon.RIGHT_TRIGGER, 64f - STACK_X, test.rightTrigger),
             )) {
-                val at = Offset((x - PAD_LEFT) * S * u, 0f)
-                val sz = Size(15f * S * u, 9f * u)
-                drawRoundRect(if (test.lit(icon)) Teal else body, at, sz, CornerRadius(4.5f * u))
-                if (value > 0f) drawRoundRect(Teal, at, sz.copy(width = sz.width * value), CornerRadius(4.5f * u))
-                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, CornerRadius(4.5f * u), style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
+                val at = Offset(((x - PAD_LEFT) * S - CAP_W / 2) * u, 0f)
+                val sz = Size(CAP_W * u, CAP_H * u)
+                val r = CornerRadius(CAP_W / 2 * u)
+                val pull = if (icon in test.down) 1f else value
+                drawRoundRect(body, at, sz, r)
+                if (pull > 0f) {
+                    clipRect(top = at.y + sz.height * (1f - pull)) { drawRoundRect(Teal, at, sz, r) }
+                }
+                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, r, style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
             }
-            for ((icon, x) in listOf(SlotIcon.LEFT_BUMPER to 11f, SlotIcon.RIGHT_BUMPER to 36f)) {
-                val at = Offset((x - PAD_LEFT) * S * u, 11f * u)
-                val sz = Size(17f * S * u, 10f * u)
-                drawRoundRect(if (test.lit(icon)) Teal else body, at, sz, CornerRadius(5f * u))
-                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, CornerRadius(5f * u), style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
+            // L/R: the short pill under each capsule.
+            for ((icon, x) in listOf(SlotIcon.LEFT_BUMPER to STACK_X, SlotIcon.RIGHT_BUMPER to 64f - STACK_X)) {
+                val at = Offset(((x - PAD_LEFT) * S - PILL_W / 2) * u, PILL_TOP * u)
+                val sz = Size(PILL_W * u, PILL_H * u)
+                val r = CornerRadius(PILL_H / 2 * u)
+                drawRoundRect(if (test.lit(icon)) Teal else body, at, sz, r)
+                drawRoundRect(if (test.passed(icon)) good else edge, at, sz, r, style = Stroke((if (test.passed(icon)) 2f else 1.2f) * u))
             }
             // The body, with the lit controls showing through its cut-outs.
             for ((stick, center, click) in listOf(
@@ -614,18 +723,28 @@ private fun PadDiagram(test: PadTest, layout: PadLayout, builtIn: Boolean, dim: 
                 passRing(icon, spot, 2f * S)
             }
             if (showHome) {
-                drawCircle(fill(SlotIcon.HOME), 1.6f * S * u, HOME.px())
-                passRing(SlotIcon.HOME, HOME, 2f * S)
+                drawCircle(fill(SlotIcon.HOME), homeR * S * u, home.px())
+                passRing(SlotIcon.HOME, home, (homeR + 0.4f) * S)
+            }
+            if (showCapture) {
+                val c = CAPTURE.px()
+                val half = 1.4f * S * u
+                drawRoundRect(fill(SlotIcon.CAPTURE), c - Offset(half, half), Size(2 * half, 2 * half), CornerRadius(0.5f * S * u))
             }
         }
         for ((icon, spot) in faces) Prompt(icon, spot, (3.6f * S).dp, tint)
-        Prompt(SlotIcon.LEFT_TRIGGER, Spot(19.5f, PAD_TOP - SHOULDERS / S + 4.5f / S), 18.dp, tint)
-        Prompt(SlotIcon.RIGHT_TRIGGER, Spot(44.5f, PAD_TOP - SHOULDERS / S + 4.5f / S), 18.dp, tint)
-        Prompt(SlotIcon.LEFT_BUMPER, Spot(19.5f, PAD_TOP - SHOULDERS / S + 16f / S), 16.dp, tint)
-        Prompt(SlotIcon.RIGHT_BUMPER, Spot(44.5f, PAD_TOP - SHOULDERS / S + 16f / S), 16.dp, tint)
+        // Each prompt on the inner side of its shape, level with it: the shapes are too small to
+        // carry one.
+        val capLabel = STACK_X + (CAP_W / 2 + 12f) / S
+        val pillLabel = STACK_X + (PILL_W / 2 + 12f) / S
+        Prompt(SlotIcon.LEFT_TRIGGER, band(capLabel, CAP_H / 2), 16.dp, tint)
+        Prompt(SlotIcon.RIGHT_TRIGGER, band(64f - capLabel, CAP_H / 2), 16.dp, tint)
+        Prompt(SlotIcon.LEFT_BUMPER, band(pillLabel, PILL_TOP + PILL_H / 2), 16.dp, tint)
+        Prompt(SlotIcon.RIGHT_BUMPER, band(64f - pillLabel, PILL_TOP + PILL_H / 2), 16.dp, tint)
         Prompt(SlotIcon.VIEW, MINUS, 16.dp, tint)
         Prompt(SlotIcon.MENU, PLUS, 16.dp, tint)
-        if (showHome) Prompt(SlotIcon.HOME, HOME, 16.dp, tint)
+        if (showHome) Prompt(SlotIcon.HOME, home, if (nintendo) 16.dp else 18.dp, tint)
+        if (showCapture) Prompt(SlotIcon.CAPTURE, CAPTURE, 14.dp, tint)
         StickReadout(test.left, Spot(LEFT_STICK.x, READOUT_Y))
         StickReadout(test.right, Spot(RIGHT_STICK.x, READOUT_Y))
     }

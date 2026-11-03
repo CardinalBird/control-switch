@@ -9,11 +9,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,9 +53,9 @@ import com.controlswitch.ui.theme.Palette
 import kotlinx.coroutines.delay
 
 /**
- * The mapping editor, sized to fit the Thor's screen with no scrolling: the presets in one row,
- * the slots split into group tabs, and the chosen group's slots in two columns. "Map all" (Y, or
- * Guided setup) still walks every slot one press at a time.
+ * The mapping editor, sized to fit the Thor's screen with no scrolling: a sidebar with the layout,
+ * the slot groups and Reset, and the chosen group's slots in one column beside it. Guided setup (Y)
+ * walks every slot one press at a time.
  *
  * A screen rather than a dialog because it is the only thing the user is doing, and the controller is
  * busy answering it rather than driving the app behind. Back leaves.
@@ -91,6 +101,34 @@ fun MappingEditorScreen(
     // Where focus really is, as the rows report it: requestFocus() says nothing about whether it took.
     var focusedSlot by remember { mutableStateOf(-1) }
 
+    // A layout change remaps every button at once, so it says so: without a word back, the next B
+    // was pressed to find out, and that B left the page (and, pressed again, the app).
+    var banner by remember { mutableStateOf<BannerMessage?>(null) }
+    // The layout waiting on Start in [LayoutConfirm]; null while no change is being asked about.
+    var askLayout by remember { mutableStateOf<PadLayout?>(null) }
+    // The banner waits for the switch to finish, so "layout on" is true when it is said.
+    var switched by remember { mutableStateOf<PadLayout?>(null) }
+    LaunchedEffect(state.switchingTo) {
+        val target = state.switchingTo
+        if (target != null) {
+            switched = target
+        } else {
+            switched?.let {
+                banner = BannerMessage(
+                    if (it == PadLayout.CUSTOM) "Custom layout on: your own buttons are back."
+                    else "${layoutName(it)} layout on. Every button now matches its printed letter.",
+                )
+            }
+            switched = null
+        }
+    }
+    LaunchedEffect(state.customJustSaved) {
+        if (state.customJustSaved > 0) banner = BannerMessage("Custom layout saved. Pick it under Layout any time.")
+    }
+    // The layout shown on the row, moved with left and right; A asks to switch to it. Follows the
+    // real one whenever that changes.
+    var choice by remember(state.layout) { mutableStateOf(state.layout) }
+
     // Closing the overlay hands the row back. Also fires on the very first composition, with the
     // default of row zero, which is the initial anchor the D-pad needs.
     LaunchedEffect(state.capturing) {
@@ -135,14 +173,14 @@ fun MappingEditorScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.padding(horizontal = 28.dp, vertical = 10.dp)) {
-                Text("Button mapping", color = Palette.textPrimary, fontSize = 22.sp)
+                Text("Button Mapping", color = Palette.textPrimary, fontSize = 22.sp)
                 Text(
                     if (state.seeded) {
                         // A known pad arrives already mapped from its profile; the editor's job then is
                         // adjustment, and saying so stops "why is everything filled in?" cold.
-                        "${state.controllerName} · set from its profile. Pick a button to change it."
+                        "${state.controllerName} · set up automatically. Pick a button to change it."
                     } else {
-                        "${state.controllerName} · unbound buttons work as the controller reports them."
+                        "${state.controllerName} · buttons you leave unbound work as normal."
                     },
                     color = Palette.textSecondary,
                     fontSize = 13.sp,
@@ -151,79 +189,152 @@ fun MappingEditorScreen(
             }
             Rule(Modifier.padding(horizontal = 28.dp))
 
-            Column(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 28.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Switch-settings shape: a sidebar to pick what to edit, the chosen group's buttons in
+            // one column beside it. Up and down stay on one side; right goes in, left comes back.
+            if (state.loading) {
+                // The page is up the moment A is pressed; the pad's buttons follow in a moment. The
+                // message waits a quarter second and fades in, so a quick load shows a calm blank page
+                // rather than a message that blinks on and off.
+                val showLoading = remember { Animatable(0f) }
+                LaunchedEffect(Unit) {
+                    delay(LOADING_DELAY_MS)
+                    showLoading.animateTo(1f, tween(200))
+                }
+                Column(
+                    Modifier.fillMaxWidth().weight(1f).graphicsLayer { alpha = showLoading.value },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Loading your controller's buttons…", color = Palette.textSecondary, fontSize = 15.sp)
+                    Spacer(Modifier.height(14.dp))
+                    LinearProgressIndicator(modifier = Modifier.width(260.dp), color = Palette.cyan, trackColor = Palette.border)
+                }
+            } else Row(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 28.dp, vertical = 8.dp)) {
+                Column(Modifier.width(SIDEBAR_W).fillMaxHeight()) {
                     if (controller != null) {
-                        EditorButton("Guided setup", Palette.surface, controller::mapAll)
-                        EditorButton("Xbox layout", Palette.surface, { controller.autoMap(PadLayout.XBOX) })
-                        EditorButton("Nintendo layout", Palette.surface, { controller.autoMap(PadLayout.NINTENDO) })
+                        // One row for the choice. Left and right only move what it shows; A on it asks
+                        // to switch, and Start confirms, since a switch remaps every button, A and B
+                        // included. Asking for the one already in force just says so.
+                        val layouts = PadLayout.entries
+                        val step = { by: Int -> choice = layouts[(layouts.indexOf(choice) + by + layouts.size) % layouts.size] }
+                        MenuRow(
+                            // One line, no subtitle: the sidebar is exactly full, and a second line
+                            // here squashed its last tab to nothing. The status line says "press A".
+                            title = "Layout",
+                            minHeight = 40.dp,
+                            onClick = {
+                                if (choice == state.layout) banner = BannerMessage("You're already on the ${layoutName(choice)} layout.", done = false)
+                                else askLayout = choice
+                            },
+                            onLeft = { step(-1) },
+                            onRight = { step(1) },
+                            // The top of the page: up from here has nowhere to go, and without this
+                            // it took the focus off every row, leaving nothing highlighted.
+                            modifier = Modifier.focusProperties { up = FocusRequester.Cancel },
+                        ) { RowValue("‹  ${layoutName(choice)}  ›", accent = true) }
+                        Spacer(Modifier.height(8.dp))
                     }
-                    EditorButton("Reset to profile", Palette.surface, onClearAll)
-                }
-                val groups = SlotGroup.entries.filter { g -> state.slots.any { groupOf(it.icon) == g } }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    groups.forEach { g ->
-                        GroupTab(g.label, selected = g == group, onSelect = { group = g }, Modifier.focusRequester(tabFocus.getValue(g)))
+                    val groups = SlotGroup.entries.filter { g -> state.slots.any { groupOf(it.icon) == g } }
+                    groups.forEachIndexed { i, g ->
+                        GroupTab(
+                            g.label, selected = g == group, onSelect = { group = g },
+                            Modifier.fillMaxWidth().padding(vertical = 1.dp)
+                                .focusProperties { if (i == 0 && controller == null) up = FocusRequester.Cancel }
+                                .focusRequester(tabFocus.getValue(g)),
+                        )
                     }
+                    Spacer(Modifier.weight(1f))
+                    MenuRow(
+                        title = "Reset to default",
+                        minHeight = 40.dp,
+                        onClick = {
+                            onClearAll()
+                            banner = BannerMessage("Reset: every button is back to its default.")
+                        },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    )
                 }
-                // Two columns of the chosen group's slots; the largest group (a stick) has five.
-                state.slots.withIndex().filter { groupOf(it.value.icon) == group }.chunked(2).forEachIndexed { rowIndex, pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        pair.forEach { (index, slot) ->
-                            SlotRow(
-                                slot = slot,
-                                source = state.bindings[slot.target],
-                                chord = state.chords[slot.target],
-                                axisLabels = state.sourceAxisLabels,
-                                onBind = {
-                                    focusedRow = index
-                                    onBind(slot)
-                                },
-                                onClear = {
-                                    focusedRow = index
-                                    onClear(slot)
-                                    restoreTo = index
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    // Up from the top row goes back to this group's own tab, not to
-                                    // whichever tab happens to sit above it.
-                                    .focusProperties { if (rowIndex == 0) up = tabFocus.getValue(group) }
-                                    .focusRequester(rowFocus[index])
-                                    .onFocusChanged { if (it.isFocused) focusedSlot = index },
-                            )
-                        }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(20.dp))
+                // The chosen group's slots, one per line; the largest group (a stick) has five.
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val shown = state.slots.withIndex().filter { groupOf(it.value.icon) == group }
+                    shown.forEachIndexed { i, (index, slot) ->
+                        SlotRow(
+                            slot = slot,
+                            label = slotLabel(slot),
+                            // An unbound Back is still Select + Start while that setting is on.
+                            unbound = if (slot.icon == SlotIcon.BACK && state.selectStartBack) "Select + Start" else null,
+                            source = state.bindings[slot.target],
+                            chord = state.chords[slot.target],
+                            axisLabels = state.sourceAxisLabels,
+                            onBind = {
+                                focusedRow = index
+                                onBind(slot)
+                            },
+                            onClear = {
+                                focusedRow = index
+                                onClear(slot)
+                                restoreTo = index
+                            },
+                            modifier = Modifier
+                                // Left goes back to this group's own entry, not whichever sidebar row
+                                // happens to sit level with this one.
+                                // and the list's ends are walls, like the sidebar's.
+                                .focusProperties {
+                                    left = tabFocus.getValue(group)
+                                    if (i == 0) up = FocusRequester.Cancel
+                                    if (i == shown.lastIndex) down = FocusRequester.Cancel
+                                }
+                                .focusRequester(rowFocus[index])
+                                .onFocusChanged { if (it.isFocused) focusedSlot = index },
+                        )
                     }
                 }
             }
 
+            // The hints take the width they need and the status wraps in what is left: a fixed share
+            // for the hints cut the last one ("Done") off once there were four.
             Row(
                 modifier = Modifier.fillMaxWidth().background(Palette.band),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     state.notice
-                        ?: if (state.boundCount == 0) "Nothing bound yet." else "${state.boundCount} bound — applied when you leave.",
+                        ?: if (choice != state.layout) "Press A to switch to the ${layoutName(choice)} layout."
+                        else if (state.boundCount == 0) "Nothing bound yet." else "${state.boundCount} bound, saved when you leave.",
                     color = Palette.textMuted,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(start = 28.dp).weight(1f),
                 )
-                Box(Modifier.weight(2f)) {
-                    HintBar(
-                        hints = listOfNotNull(
-                            HintAction(SlotIcon.A, "Rebind", null),
-                            HintAction(SlotIcon.X, "Clear", null),
-                            controller?.let { HintAction(SlotIcon.Y, "Map all", it::mapAll) },
-                            HintAction(SlotIcon.B, "Done", onClose),
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                HintBar(
+                    hints = listOfNotNull(
+                        HintAction(SlotIcon.A, "Rebind", null),
+                        HintAction(SlotIcon.X, "Clear", null),
+                        controller?.let { HintAction(SlotIcon.Y, "Guided", it::mapAll) },
+                        HintAction(SlotIcon.B, "Done", onClose),
+                    ),
+                )
             }
+        }
+
+        Banner(banner, onDone = { banner = null }, Modifier.padding(top = 64.dp))
+
+        askLayout?.let { target ->
+            LayoutConfirm(
+                target = target,
+                hasCustom = state.hasCustom,
+                onConfirm = {
+                    askLayout = null
+                    controller?.switchLayout(target)
+                },
+                onCancel = { askLayout = null },
+            )
+        }
+        // Faded in and out, and kept on screen while it fades, so it never blinks.
+        val lastSwitch = remember { arrayOf(PadLayout.XBOX) }
+        state.switchingTo?.let { lastSwitch[0] = it }
+        AnimatedVisibility(visible = state.switchingTo != null, enter = fadeIn(tween(160)), exit = fadeOut(tween(220))) {
+            SwitchingLayout(layoutName(lastSwitch[0]))
         }
 
         if (state.capturing != null) {
@@ -236,16 +347,36 @@ fun MappingEditorScreen(
                 notice = state.notice,
                 onCancel = onCancelBind,
                 // "3 of 26": the walk's place, counted from one.
-                progress = state.walk?.let { "${it + 1} of ${state.slots.size}" },
+                // Back is left out of the walk, so out of the count.
+                progress = state.walk?.let { "${it + 1} of ${state.slots.count { s -> s.icon != SlotIcon.BACK }}" },
                 onStop = controller?.let { it::stopWalk }.takeIf { state.walk != null },
             )
         }
     }
 }
 
+private val SIDEBAR_W = 230.dp
+private const val LOADING_DELAY_MS = 250L
+
+internal fun layoutName(layout: PadLayout) = when (layout) {
+    PadLayout.XBOX -> "Xbox"
+    PadLayout.NINTENDO -> "Nintendo"
+    PadLayout.CUSTOM -> "Custom"
+}
+
+/**
+ * A slot's name in the list. Select and Start come named so from the slots themselves; Home and Back
+ * spell out that they are the handheld's own actions, not buttons on the pad.
+ */
+private fun slotLabel(slot: MappingSlot): String = when (slot.icon) {
+    SlotIcon.HOME -> "Home (go to home screen)"
+    SlotIcon.BACK -> "Back (Android back)"
+    else -> slot.label
+}
+
 /** The tabs the slots are split into, so every group fits the screen without scrolling. */
 private enum class SlotGroup(val label: String) {
-    FACE("Face"), SHOULDERS("Shoulders"), DPAD("D-pad"), LEFT_STICK("Left stick"), RIGHT_STICK("Right stick"), OTHER("Other"),
+    FACE("Face"), SHOULDERS("Shoulders"), DPAD("D-pad"), LEFT_STICK("Left stick"), RIGHT_STICK("Right stick"), OTHER("Select, Start, Home"),
 }
 
 private fun groupOf(icon: SlotIcon): SlotGroup = when (icon) {
@@ -256,5 +387,5 @@ private fun groupOf(icon: SlotIcon): SlotGroup = when (icon) {
     SlotIcon.LEFT_STICK_CLICK -> SlotGroup.LEFT_STICK
     SlotIcon.RIGHT_STICK_UP, SlotIcon.RIGHT_STICK_DOWN, SlotIcon.RIGHT_STICK_LEFT, SlotIcon.RIGHT_STICK_RIGHT,
     SlotIcon.RIGHT_STICK_CLICK -> SlotGroup.RIGHT_STICK
-    SlotIcon.VIEW, SlotIcon.MENU, SlotIcon.HOME, SlotIcon.BACK -> SlotGroup.OTHER
+    SlotIcon.VIEW, SlotIcon.MENU, SlotIcon.HOME, SlotIcon.BACK, SlotIcon.CAPTURE -> SlotGroup.OTHER
 }

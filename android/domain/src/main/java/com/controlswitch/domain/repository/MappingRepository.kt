@@ -29,8 +29,32 @@ interface MappingRepository {
 
     fun setSeeded(key: MappingKey, seeded: Boolean) {}
 
-    /** The layout preset last applied to this controller; picks which console's button icons to show. */
-    fun layout(key: MappingKey): PadLayout = PadLayout.XBOX
+    /**
+     * The layout preset last applied to this controller; picks which console's button icons to show.
+     * Nintendo when none has been: the app is built for the AYN Thor, a Nintendo-layout handheld.
+     */
+    fun layout(key: MappingKey): PadLayout = storedLayout(key) ?: PadLayout.NINTENDO
+
+    /** The layout set for this controller, or null if none ever was (it then gets player 1's). */
+    fun storedLayout(key: MappingKey): PadLayout? = null
 
     fun setLayout(key: MappingKey, layout: PadLayout) {}
+
+    /**
+     * The layout the user last picked, for player 1 whichever pad that is: the app exists to fix
+     * player 1, so a layout belongs to the slot rather than to one controller. Null when there is no
+     * choice to follow, when every pad keeps whatever it has.
+     */
+    fun player1Layout(): PadLayout? = null
+
+    fun setPlayer1Layout(layout: PadLayout) {}
+
+    /**
+     * This controller's custom layout, kept apart from its live mapping so a preset can replace that
+     * and switching back to Custom brings the user's own buttons back. Per controller, since the
+     * bindings name that pad's own codes. Null until one has been set up.
+     */
+    fun customMapping(key: MappingKey): ControllerMapping? = null
+
+    fun saveCustomMapping(key: MappingKey, mapping: ControllerMapping) {}
 }

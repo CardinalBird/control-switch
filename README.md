@@ -20,7 +20,7 @@ app, retargeted to the AYN Thor and renamed Control Switch.
 
 <table>
 <tr>
-<td><img src="control-switch-ui-3.png" alt="Change Input Order: press L + R on the controller you would like to use, then A"></td>
+<td><img src="control-switch-ui-3.png" alt="Change Controller: press L + R on the controller you would like to use, then A"></td>
 <td><img src="control-switch-ui-2.png" alt="Button mapping in Switch icons, with Home bound to Minus + Plus held together"></td>
 </tr>
 <tr>
@@ -91,7 +91,7 @@ It runs without root, using a privileged service the stock firmware already ship
   mirroring to be allowed, since the daemon reads it). The Thor's Home key can't be tested in-app
 - **Select + Start** — hold it (3s) to close the current app
 - **Hides the external pad** while mirroring, so games see one controller instead of a phantom player 2
-- **Guided button mapping** — press a button for each row, or let **Map all** walk the list; or pick
+- **Guided button mapping** — press a button for each row, or let **Guided setup** walk the list; or pick
   **Nintendo** or **Xbox** layout to map in one go. Triggers and stick halves can fill button
   slots, and untouched controls keep working. Pads the bundled
   [SDL database](third-party/gamecontrollerdb/NOTICE.md) knows arrive already mapped, using the
@@ -139,7 +139,7 @@ copies would fight over the controller. Settings don't carry over.
 2. Open it once and allow notifications. Under **Additional Settings → Allow mirroring**, choose
    **Only when docked** or **Always** (whenever a controller is connected).
 3. Pair a controller (and dock, if you chose docked only). It takes over on its own.
-4. Optional: with more than one pad, open **Change Input Order** and press **L + R** on yours,
+4. Optional: with more than one pad, open **Change Controller** and press **L + R** on yours,
    then **A**. On a frontend launcher, use **Add to home screen** to pin the app.
 
 ## Supported devices

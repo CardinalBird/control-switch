@@ -188,8 +188,8 @@ internal fun itemLabel(icon: SlotIcon, layout: PadLayout): String {
         SlotIcon.RIGHT_STICK_UP -> "Right stick"
         SlotIcon.LEFT_STICK_CLICK -> "L3"
         SlotIcon.RIGHT_STICK_CLICK -> "R3"
-        SlotIcon.VIEW -> if (nintendo) "−" else "View"
-        SlotIcon.MENU -> if (nintendo) "+" else "Menu"
+        SlotIcon.VIEW -> "Select"
+        SlotIcon.MENU -> "Start"
         SlotIcon.HOME -> if (nintendo) "Home" else "Guide"
         else -> icon.name
     }

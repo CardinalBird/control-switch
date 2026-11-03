@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
@@ -115,9 +113,9 @@ internal fun BatteryIcon(fill: Float, low: Boolean, label: String?, charging: Bo
 }
 
 /**
- * A pad's charge: Android's percentage when it has one, else the level a Switch-protocol pad
- * reports in [levels] as a bar with no number (the pad gives four steps, so a % would be made up),
- * else nothing. Never 0%.
+ * A pad's charge: Android's percentage when it has one, else the kernel's for a HID-battery pad,
+ * else the level a Switch-protocol pad reports in [levels] as a bar with no number (the pad gives
+ * four steps, so a % would be made up). Nothing for a pad with no figure yet. Never 0%.
  */
 @Composable
 internal fun PadBatteryIndicator(device: ControllerDevice?, levels: Map<String, PadBattery>) {
@@ -125,7 +123,11 @@ internal fun PadBatteryIndicator(device: ControllerDevice?, levels: Map<String, 
     val level = device?.let { levels[it.name] }
     when {
         percent != null && percent > 0 -> Battery(percent)
-        level != null -> BatteryIcon(level.level / 4f, level.level <= 1, "Low".takeIf { level.level <= 1 && !level.charging }, level.charging)
+        level?.percent != null -> {
+            val p = level.percent ?: 0
+            BatteryIcon(p / 100f, p <= 15, "$p%", level.charging)
+        }
+        level != null ->BatteryIcon(level.level / 4f, level.level <= 1, "Low".takeIf { level.level <= 1 && !level.charging }, level.charging)
 
     }
 }
@@ -184,18 +186,21 @@ internal fun HandheldTile(battery: Int?, hint: String?, onClick: (() -> Unit)?, 
 }
 
 /**
- * A connected pad: its player lamp, the pad, its battery and name. The mirrored pad is player 1;
- * any other pad lights the lamp for the player number Android gave it, since games see it as that
- * extra player.
+ * A connected pad: its player lamp, the pad, its name, and its battery under the name. [player]
+ * comes from [com.controlswitch.domain.model.playerOrder]: the mirrored pad is 1, the rest follow
+ * from 2.
+ *
+ * The battery sits last, in a row of fixed height that stays even when there is no reading: placed
+ * between the pad and its name, it pushed the name down on only the pads that report a charge, and
+ * names side by side no longer lined up.
  */
 @Composable
-internal fun PadTile(device: ControllerDevice, player1: Boolean, levels: Map<String, PadBattery>, modifier: Modifier = Modifier) {
+internal fun PadTile(device: ControllerDevice, player: Int, levels: Map<String, PadBattery>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        PlayerLamps(player = if (player1) 1 else device.controllerNumber)
+        PlayerLamps(player = player)
         Spacer(Modifier.height(6.dp))
-        Image(painterResource(R.drawable.ic_controller), contentDescription = null, colorFilter = iconTint(), modifier = Modifier.size(width = 52.dp, height = 40.dp))
+        Image(painterResource(R.drawable.ic_controller), contentDescription = null, colorFilter = iconTint(), modifier = Modifier.size(56.dp))
         Spacer(Modifier.height(4.dp))
-        PadBatteryIndicator(device, levels)
         Text(
             device.name,
             color = Palette.textPrimary,
@@ -204,8 +209,12 @@ internal fun PadTile(device: ControllerDevice, player1: Boolean, levels: Map<Str
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.height(BATTERY_ROW), contentAlignment = Alignment.Center) { PadBatteryIndicator(device, levels) }
     }
 }
+
+private val BATTERY_ROW = 16.dp
 
 /** The four player lamps, the [player]th (1–4) green; none lit outside that range. */
 @Composable
