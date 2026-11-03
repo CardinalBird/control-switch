@@ -29,8 +29,8 @@ android {
         // behaviour on the device, so it is its own PR, like the dependency-age checks above.
         //noinspection OldTargetApi
         targetSdk 35
-        versionCode 9
-        versionName "0.7.0"
+        versionCode 10
+        versionName "0.7.1"
         buildConfigField "boolean", "FORCE_DOCK_MODE_FOR_DEV", "false"
     }
 
