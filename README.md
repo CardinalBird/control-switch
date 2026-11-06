@@ -140,9 +140,21 @@ port is serving right now, so you can tell a wiring problem from an emulator set
 | Emulator | DSU on Android | Setup |
 | --- | --- | --- |
 | Eden | yes | In `config.ini`: `enable_udp_controller=true`, and `player_0_motionleft` / `player_0_motionright` = `"engine:cemuhookudp,guid:0000000000000000000000007f000001,motion:0,pad:0,port:26760"` |
-| Dolphin | yes | `DSUClient.ini`: `[Server] Enabled = True`, `Entries = Control Switch:127.0.0.1:26760;`. Map the Wii Remote's motion to `DSUClient/0/DualShock 4` |
+| Dolphin | yes | `DSUClient.ini`: `[Server] Enabled = True`, `Entries = Control Switch:127.0.0.1:26760;`. Then map the Wii Remote as in [Dolphin mapping](#dolphin-mapping) |
 | Azahar | yes | Motion source "cemuhookudp", address `127.0.0.1`, port `26760` |
 | Cemu | no | The Android build has no DSU client; it reads the Thor's own sensors |
+
+### Dolphin mapping
+
+Map the gyro under the Wii Remote's **Motion Input** tab. Point, Tilt and Swing treat an input as
+a stick deflection, so a gyro mapped there pins the cursor at the edge on any turn, and no
+sensitivity setting changes it. Dolphin won't detect DSU motion when you move the controller, so
+pick each input by hand from `DSUClient/0/DualShock 4`:
+
+- **Accelerometer**: Up, Down, Left, Right, Forward, Backward → `Accel Up`, `Accel Down`, …
+- **Gyroscope**: Pitch Up/Down, Roll Left/Right, Yaw Left/Right → `Gyro Pitch Up`, `Gyro Pitch Down`, …
+- Clear **Point**, **Tilt** and **Swing** on the Motion Simulation tab, so **IMU Point** aims the
+  cursor. Its **Total Yaw** and **Total Pitch** are the sensitivity: raise them for a slower cursor.
 
 ## Install
 
